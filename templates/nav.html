@@ -1,0 +1,57 @@
+<nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+    <div class="container-fluid">
+        <!-- <a class="navbar-brand" href="/">EDITH</a> -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarColor01" aria-controls="navbarColor01" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarColor01">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link active" href="/"><BIG><BIG>EDITH</BIG></BIG>
+              <span class="visually-hidden">(current)</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/runs">Statistics</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/runs">Activity</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/runs">Reports</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/help">Help</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/about">About</a>
+          </li>
+        </ul>
+
+        
+        <ul class="navbar-nav d-flex">
+            {% if current_user.is_authenticated %}
+                {% if current_user.is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin">Admin<span class="sr-only">(current)</span></a>
+                    </li>
+                {% endif %}
+                <li class="nav-item">
+                    <a class="nav-link" href="/logout">Logout<span class="sr-only">(current)</span></a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="/profile">Profile [{{current_user.username}}]<span class="sr-only">(current)</span></a>
+              </li>
+            {% else %}
+                <li class="nav-item">
+                    <a class="nav-link" href="/register">Signup <span class="sr-only">(current)</span></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/login">Login <span class="sr-only">(current)</span></a>
+                </li>
+            {% endif %} 
+        </ul>
+
+      </div>
+    </div>
+  </nav>

@@ -1,0 +1,72 @@
+{%- extends "base.html" %}
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Login</title>
+	<style>
+		h1{
+		color: green;
+		}
+	</style>
+</head> -->
+<body>
+    {% block content %}
+    <div class="container">
+
+        <div class="row">
+
+            <div class="column50 center">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">About</div>
+                    <div class="card-body">
+						<p class="card-text">EDITH is a Dashboard dedicated to STARK analyses. </p>
+                        
+                    </div>
+					<ul class="list-group list-group-flush">
+						<br>
+						<li class="list-group-item">
+							<label for="staticEmail" class="col-sm-2 col-form-label">Email</label>
+							<div class="col-sm-10">
+								<a href="mailto:bioinfo@chru-strabourg.fr">
+								<input type="text" readonly="" class="form-control-plaintext" id="staticEmail" value="bioinfo@chru-strabourg.fr">
+							</a>
+							</div>
+						</li>
+						<li class="list-group-item">
+							<label for="staticLab" class="col-sm-2 col-form-label">Lab</label>
+							<div class="col-sm-10">
+								<a href="https://www.chru-strasbourg.fr/service/bioinformatique-medicale-appliquee-au-diagnostic-unite-de/" target="lab">
+									<input type="text" readonly="" class="form-control-plaintext" id="staticLab" value="Medical Bioinformatics applied to diagnosis">
+								</a>
+							</div>
+						</li>
+					</ul>
+                </div>
+
+            </div>
+        
+        </div>
+
+    </div>
+
+	<!-- <nav>
+	<ul>
+		<li><a href="/login">Login</a></li>
+		<li><a href="/register">Create account</a></li>
+	</ul>
+	</nav>
+	<h1>Login to your account</h1>
+	<form action="#" method="post">
+	<label for="username">Username:</label>
+	<input type="text" name="username" />
+	<label for="password">Password:</label>
+	<input type="password" name="password" />
+	<button type="submit">Submit</button>
+	</form> -->
+    {% endblock %}
+</body>

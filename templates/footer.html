@@ -1,0 +1,21 @@
+<div class="footer container">
+
+    <div class="row">
+
+        {% for warning in warnings %}
+            <div class="column33 ">
+                <div class="alert alert-dismissible alert-warning">
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <h4 class="alert-heading">Warning!</h4>
+                    <p class="mb-0">User '{{username}}' already exists</p>
+                    <p class="mb-0">Choose another Username.</p>
+                </div>
+            </div>
+
+        {% endfor %}
+
+    
+    </div>
+
+</div>
+

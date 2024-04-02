@@ -1,0 +1,24 @@
+{%- extends "base.html" %}
+
+<body>
+    {% block content %}
+    <div class="container">
+
+        <!-- Main Summary -->
+        {% include 'main_summary.html' %}
+
+        <!-- Main Runs -->
+        {% if current_user.is_authenticated %}
+            {% include 'main_runs.html' %}
+        {% endif %}    
+
+        <!-- Main Modules -->
+        {% if current_user.is_authenticated %}
+            {% include 'main_modules.html' %}
+        {% endif %}    
+
+
+    </div>
+
+    {% endblock %}
+</body>

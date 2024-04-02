@@ -1,0 +1,72 @@
+<div class="row">
+
+    {% for module in modules %}
+        {% set module_infos = modules.get(module,{}) %}
+
+        {% if module_infos.get("available",false) %}
+
+            <div class="column33">
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header h5">{{ module_infos.get("fullname",module) }}</div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            {{ module_infos.get("description",module) }}
+                        </p>
+                    </div>
+
+                    <ul class="list-group list-group-flush">
+                        {% for submodule in module_infos.get("submodules") %}
+                            {% set submodule_infos = module_infos.get("submodules").get(submodule,{}) %}
+
+                            {% for service in submodule_infos.get("services",{}) %}
+                                {% set service_infos = submodule_infos.get("services",{}).get(service,{}) %}
+                                {% set name = service_infos.get("name",service) %}
+                                {% set description = service_infos.get("description","") %}
+                                {% set release = service_infos.get("release","") %}
+                                {% set type = service_infos.get("type","") %}
+                                {% set available = service_infos.get("available","") %}
+                                {% set link = service_infos.get("link",{}) %}
+
+                                <li class="list-group-item d-flex justify-content-between align-items-center" title="[{{ release }}] {{ description }}">
+                                    <span class="card-text">
+                                        {{ name }} 
+                                    </span>
+                                    <span class="card-text">
+                                        {% if type == "IHM" and available and link.get("available", False) %}
+                                            {% set server_ip = request.environ['SERVER_NAME'] %}
+                                            {% set ihm_protocol = link.get("protocol", "http") %}
+                                            {% set ihm_ip = link.get("ip", server_ip) %}
+                                            {% if ihm_ip == "" %}
+                                                {% set ihm_ip = server_ip %}
+                                            {% endif %}
+                                            {% set ihm_port = link.get("port", "80") %}
+                                            {% set ihm_path = link.get("path", "") %}
+                                            {% set ihm_url = ihm_protocol+"://"+ihm_ip+":"+ihm_port+"/"+ihm_path %}
+
+                                            <a href="{{ihm_url}}" target="{{module}}-{{submodule}}-{{service}}"><span class="badge bg-info rounded-pill">{{ type }}</span></a>
+                                        {% else %}
+                                            <span class="badge bg-light rounded-pill">{{ type }}</span>
+                                        {% endif %}
+                                        {% if available %}
+                                            <span class="badge bg-success rounded-pill" title="Enable">V</span>
+                                        {% else %}
+                                            <span class="badge bg-light rounded-pill" title="Disable">X</span>
+                                        {% endif %}
+                                    </span>
+                                </li>
+                                
+
+                            {% endfor %}
+
+                        {% endfor %}
+                    </ul>
+
+                </div>
+
+            </div>
+
+        {% endif %}
+
+    {% endfor %}
+
+</div>

@@ -1,0 +1,82 @@
+{%- extends "base.html" %}
+
+
+<body>
+    {% block content %}
+    <div class="container">
+
+        <div class="row">
+
+            <div class="column25">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">Profile</div>
+                    <div class="card-body">
+                        {{current_user.username}}
+                    </div>
+                </div>
+
+            </div>
+        
+			<div class="column50">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">Users</div>
+                    <div class="card-body">
+                        
+						<form action="#" method="post">
+
+                        
+                            <ul class="navbar-nav me-auto list-group">
+                                
+                                <li class="nav-item">
+                                    <label for="username">UserName:</label>
+                                    <input type="text" class="form-control" name="username" value="{{current_user.username}}" disabled />
+                                </li>
+                                <!-- <li class="nav-item">
+                                    Password: {{current_user.password}}
+                                </li> -->
+                                <li class="nav-item">
+                                    <label for="is_admin">Admin:</label>
+                                    <input type="checkbox" name="is_admin" value="{{current_user.is_admin}}" disabled />
+                                </li>
+                                <li class="nav-item">
+                                    <label for="groups">Group:</label>
+                                    <input type="text" class="form-control" name="groups" value="{{current_user.groups}}" disabled />
+                                </li>
+                                <li class="nav-item"></li>
+                                    <label for="password">Password:</label>
+                                    <input type="password" class="form-control" name="password" />
+                                </li>
+                                <li class="nav-item"></li>
+                                    <label for="new_password1">New Password:</label>
+                                    <input type="password" class="form-control" name="new_password1" />
+                                    <label for="new_password2">New Password:</label>
+                                    <input type="password" class="form-control" name="new_password2" />
+                                </li>
+                                <li class="nav-item">
+                                    <br>
+                                    <button type="submit" class="btn btn-primary">Update</button>
+                                </li>
+                                
+
+                            </ul>
+                        </form>
+
+					</div>
+                </div>
+
+                {%- include "message.html" %}
+
+            </div>
+
+            
+
+
+        </div>
+
+    </div>
+
+	
+    {% endblock %}
+</body>

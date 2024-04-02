@@ -1,0 +1,67 @@
+{% if runs_number and runs_number > limit %}
+{% set recent_runs = limit %}
+{% else %}
+{% set recent_runs = runs_number %}
+{% endif %}
+
+<div class="row">
+
+    <div class="column100">
+
+        {% if runs_number and runs_number > 0 and recent_runs > 0 %}
+        <div class="card border-secondary mb-3" style="width: 100%;">
+            
+            <div class="card-header h5">List of recent runs [{{recent_runs}}/{{runs_number}}]</div>
+            <div class="card-body">
+
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="lead">Run</th>
+                            <th scope="col" class="lead">Project</th>
+                            <th scope="col" class="lead">Group</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in runs %}
+                            {% if loop.index <= limit %}
+                            <tr class="table">
+                                <th class="text-primary">
+                                    <span class="lead">
+                                        {{ run }} {{ count }}
+                                    </span>
+                                    {% if run in runs_grouped.get("Input") %}
+                                        <span class="badge rounded-pill bg-light">Input</span>
+                                    {% endif %}
+                                    {% if run in runs_grouped.get("Repository") %}
+                                        <span class="badge rounded-pill bg-light">Repository</span>
+                                    {% endif %}
+                                    {% if run in runs_grouped.get("Archives") %}
+                                        <span class="badge rounded-pill bg-light">Archives</span>
+                                    {% endif %}
+                                </th>
+                                {% if run in runs_grouped.get("Repository") %}
+                                    <td>
+                                        <span class="lead text-body-tertiary">{{ runs_grouped.get("Repository").get(run).get("project") }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="lead text-body-tertiary">{{ runs_grouped.get("Repository").get(run).get("group") }}</span>
+                                    </td>
+                                {% else %}
+                                    <td class="lead text-body-tertiary">-</td>
+                                    <td class="lead text-body-tertiary">-</td>
+                                {% endif %}
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+            </div>
+            
+        </div>
+        {% endif %}
+
+    </div>
+
+</div>

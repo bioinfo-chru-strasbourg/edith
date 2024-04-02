@@ -1,0 +1,28 @@
+{% if success %}
+    <div class="alert alert-dismissible alert-success">
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h4 class="alert-heading">Info!</h4>
+        <p class="mb-0">{{success}}</p>
+    </div>
+{% endif %}
+{% if info %}
+    <div class="alert alert-dismissible alert-info">
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h4 class="alert-heading">Info!</h4>
+        <p class="mb-0">{{info}}</p>
+    </div>
+{% endif %}
+{% if warning %}
+    <div class="alert alert-dismissible alert-warning">
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h4 class="alert-heading">Warning!</h4>
+        <p class="mb-0">{{warning}}</p>
+    </div>
+{% endif %}
+{% if error %}
+    <div class="alert alert-dismissible alert-danger">
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h4 class="alert-heading">Error!</h4>
+        <p class="mb-0">{{error}}</p>
+    </div>
+{% endif %}

@@ -1,0 +1,48 @@
+{%- extends "base.html" %}
+
+<body>
+    {% block content %}
+    {% include 'runs_header.html' %}
+    <div class="container">
+        {% if title != "" %}
+        <div class="col-lg-12">
+            <div class="page-header">
+               <h1>{{ title }}</h1>
+            </div>
+         </div>
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th scope="col" class="">Run</th>
+                    {% if title != "Input" %}
+                        <th scope="col" class="">Project</th>
+                        <th scope="col" class="">Group</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr class="table">
+                    <th class="text-primary">
+                        <span class="">
+                            {{ run }} 
+                        </span>
+                        
+                    </th>
+                    {% if title != "Input" %}
+                        <td>
+                            <span class="text-body-tertiary">{{ runs.get(run).get("project") }}</span>
+                            
+                        </td>
+                        <td>
+                            <span class="text-body-tertiary">{{ runs.get(run).get("group") }}</span>
+                        </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+    {% endblock %}
+</body>

@@ -1,0 +1,19 @@
+
+<div class="card border-secondary mb-3" style="width: 100%;">
+    <div class="card-header h5">Statistics</div>
+    <div class="card-body">
+        <p class="card-text">Stastitics on runs/analyses, groups, projects and samples, stored in repository, archives and sequencing raw data folders.</p>
+    </div>
+    <ul class="list-group">
+        {% for repo in repos %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="card-text">
+                {{ repo }}
+            </span>
+            <span class="card-text">
+                <a href="/runs_{{ repo }}"><span class="badge bg-primary rounded-pill" title="{{ repos.get(repo)|length }} analyses">{{ repos.get(repo)|length }}</span></a>
+            </span>
+            </li>
+        {% endfor %}
+    </ul>
+</div>

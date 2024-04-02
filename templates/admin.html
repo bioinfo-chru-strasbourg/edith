@@ -1,0 +1,53 @@
+{%- extends "base.html" %}
+
+
+<body>
+    {% block content %}
+    <div class="container">
+
+        <div class="row">
+
+            <div class="column25 center">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">Admin</div>
+                    <div class="card-body">
+                        <a href="/populate">populate</a>
+                    </div>
+                    
+                </div>
+                {%- include "message.html" %}
+
+            </div>
+        
+			<div class="column50 center">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">Users</div>
+                    <div class="card-body">
+                        
+						
+						<ul class="navbar-nav me-auto list-group">
+							{% for user in users %}
+							<li class="nav-item">
+								{{user.id}}
+								{{user.username}}
+								{{user.password}}
+								{{user.is_admin}}
+								{{user.groups}}
+							</li>
+							{% endfor %}
+						</ul>
+
+					</div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+	
+    {% endblock %}
+</body>

@@ -1,0 +1,35 @@
+
+<div class="card border-secondary mb-3" style="width: 100%;">
+    <div class="card-header h5">Analyses reports</div>
+    <div class="card-body">
+        <p class="card-text">Report browser provides a direct access to analyses reports.</p>
+    </div>
+    
+    <div class="card-body">
+        
+        <span class="card-text">
+            <form class="d-flex">
+                <input class="form-control me-sm-2" type="search" placeholder="Search" {{ "disabled=" if not current_user.is_authenticated }}>
+                <button class="btn btn-secondary my-2 my-sm-0" type="submit">Search</button>
+            </form>
+        </span>
+        
+        {% if current_user.is_authenticated %}           
+            <span class="card-text">
+                <form class="d-flex">
+                    <select class="form-select" id="exampleSelect1" {{ "disabled=" if not current_user.is_authenticated }}>
+                        <option>Select an analysis...</option>
+                        {% for run in runs %}
+                        <option>{{run}}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </span>
+        {% else %}
+            <br>
+            <br>
+        {% endif %}
+
+    </div>
+    
+</div>
