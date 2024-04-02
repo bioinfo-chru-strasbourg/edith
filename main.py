@@ -307,6 +307,8 @@ def profile():
     if request.method == "POST":
         user = Users.query.filter_by(id=current_user.id).first()
         result = user.update_profile(dict(request.form))
+    else:
+        result = {}
 
     return render_template(
         "profile.html",
