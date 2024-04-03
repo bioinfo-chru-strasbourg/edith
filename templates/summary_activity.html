@@ -1,39 +1,29 @@
-
+{% set status_map = {
+    "secondary": "unknown",
+    "info": "waiting",
+    "warning": "processing",
+    "success": "success",
+    "danger": "error",
+} %}
 <div class="card border-secondary mb-3" style="width: 100%;">
     <div class="card-header h5">Activity</div>
     <div class="card-body">
         <p class="card-text">Activity for runs/analyses sequenced, analyzed, queued, running, archived ans availabled in reposirory.</p>
     </div>
     <ul class="list-group">
+        {% for step in activity_statistics %}
         <li class="list-group-item d-flex justify-content-between align-items-center">
             <span class="card-text">
-                Sequencing
+                {{ step }}
             </span>
             <span class="card-text">
-                <span class="badge bg-success rounded-pill" title="64 runs complete">64</span>
-                <span class="badge bg-warning rounded-pill" title="3 runs in progress">3</span>
-                <span class="badge bg-danger rounded-pill" title="0 runs failed">0</span>
+                {% for status in activity_statistics.get(step) %}
+                    {% set status_number = activity_statistics.get(step).get(status) %}
+                    {% set status_msg = status_map.get(status) %}
+                    <span class="badge bg-{{status}} rounded-pill" title="{{status_number}} runs {{status_msg}}">{{status_number}}</span>
+                {% endfor %}
             </span>
         </li>
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span class="card-text">
-                Analysis
-            </span>
-            <span class="card-text">
-                <span class="badge bg-success rounded-pill" title="1024 analyses complete">1024</span>
-                <span class="badge bg-warning rounded-pill" title="3 analyses in progress">3</span>
-                <span class="badge bg-danger rounded-pill" title="1 analyses failed">1</span>
-            </span>
-        </li>
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span class="card-text">
-                Repository
-            </span>
-            <span class="card-text">
-                <span class="badge bg-success rounded-pill" title="1024 analyses availabled">1024</span>
-                <span class="badge bg-warning rounded-pill" title="3 analyses in progress">3</span>
-                <span class="badge bg-danger rounded-pill" title="1 analyses failed">1</span>
-            </span>
-        </li>
+        {% endfor %}
     </ul>
 </div>

@@ -1,0 +1,54 @@
+{% if runs_number and runs_number > limit %}
+{% set recent_runs = limit %}
+{% else %}
+{% set recent_runs = runs_number %}
+{% endif %}
+
+{% set status_map = {
+    "secondary": "unknown",
+    "info": "waiting",
+    "warning": "processing",
+    "success": "success",
+    "danger": "error",
+} %}
+
+<div class="row">
+
+    <div class="column100">
+
+        <div class="card border-secondary mb-3" style="width: 100%;">
+
+            <div class="card-header h5">List of recent runs [{{recent_runs}}/{{runs_number}}]</div>
+
+        
+
+        <div class="row">
+
+            {% for run in runs %}
+
+            <div class="column33">
+                <div class="list-group" >
+                    <a href="#" class="list-group-item list-group-item-action flex-column align-items-start">
+                    <div class="d-flex w-100 justify-content-between">
+                        <p class="mb-1">{{run.name}}</p>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-{{run.status_sequencing}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="sequencing {{status_map.get(run.status_sequencing)}}"></div>
+                        <div class="progress-bar bg-{{run.status_repository}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="repoository {{status_map.get(run.status_repository)}}"></div>
+                        <div class="progress-bar bg-{{run.status_archives}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="archives {{status_map.get(run.status_archives)}}"></div>
+                    </div>
+                    <span class="badge rounded-pill bg-light">{{ run.project }}</span>
+                    <span class="badge rounded-pill bg-light">{{ run.group }}</span>
+                    </a>
+                </div>
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+        </div>
+
+    </div>
+
+</div>

@@ -19,8 +19,8 @@
                 <form class="d-flex">
                     <select class="form-select" id="exampleSelect1" {{ "disabled=" if not current_user.is_authenticated }}>
                         <option>Select an analysis...</option>
-                        {% for run in runs %}
-                        <option>{{run}}</option>
+                        {% for run in all_runs_names %}
+                        <option>{{run.name}}</option>
                         {% endfor %}
                     </select>
                 </form>

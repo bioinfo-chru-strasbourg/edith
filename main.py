@@ -3,8 +3,10 @@ import os
 import sqlite3
 import time
 from flask import Flask, render_template, request, url_for, redirect, jsonify
-from flask_cors import CORS
+
+# from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import load_only
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -14,8 +16,14 @@ from flask_login import (
     login_required,
 )
 from flask_bootstrap import Bootstrap
-from edith.runs import get_directories, get_runs  # , get_runs_folder
+from edith.runs import (
+    find_files,
+    find_most_recent_file,
+    get_directories,
+    get_files_log,
+)  # , get_runs  # , get_runs_folder
 from edith.modules import get_modules
+from config.config import folders_runs, modules_dir, folders_services
 
 # from objects.models import Users, Groups
 
@@ -30,8 +38,8 @@ app.config["SECRET_KEY"] = "abc"
 login_manager = LoginManager()
 login_manager.init_app(app)
 
-# enable CORS
-CORS(app, resources={r"/*": {"origins": "*"}})
+# # enable CORS
+# CORS(app, resources={r"/*": {"origins": "*"}})
 
 db = SQLAlchemy()
 
@@ -94,10 +102,20 @@ class Runs(UserMixin, db.Model):
     repository_last_modified = db.Column(db.String(100), unique=False, nullable=True)
     repository_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
     repository_analysislog = db.Column(db.Text, unique=False, nullable=True)
+    repository_config = db.Column(db.Text, unique=False, nullable=True)
     archives_path = db.Column(db.String(500), unique=False, nullable=True)
     archives_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
     archives_last_modified = db.Column(db.String(100), unique=False, nullable=True)
     archives_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
+    archives_analysislog = db.Column(db.Text, unique=False, nullable=True)
+    archives_config = db.Column(db.Text, unique=False, nullable=True)
+    analysis_path = db.Column(db.String(500), unique=False, nullable=True)
+    analysis_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+    analysis_last_modified = db.Column(db.String(100), unique=False, nullable=True)
+    analysis_listener_log = db.Column(db.Text, unique=False, nullable=True)
+    analysis_api_json = db.Column(db.Text, unique=False, nullable=True)
+    analysis_api_info = db.Column(db.Text, unique=False, nullable=True)
+    analysis_api_output = db.Column(db.Text, unique=False, nullable=True)
     group = db.Column(db.String(50), unique=False, nullable=True)
     project = db.Column(db.String(50), unique=False, nullable=True)
     status_sequencing = db.Column(db.String(50), unique=False, nullable=True)
@@ -134,15 +152,6 @@ app.app_context().push()
 #         db.close()
 
 
-# Config
-folders_runs = {
-    "Input": "/Users/lebechea/STARK/input/runs",
-    "Repository": "/Users/lebechea/STARK/output/repository",
-    "Archives": "/Users/lebechea/STARK/output/archives",
-}
-modules_dir = "/Users/lebechea/STARK/services"
-
-
 @login_manager.user_loader
 def loader_user(user_id):
     return Users.query.get(user_id)
@@ -168,14 +177,57 @@ def populate():
     # print(f"ctime={ctime}")
     # print(f"mtime={mtime}")
 
-    print("Input")
+    # print("Input")
     runs_input = get_directories(root_dir=folders_runs.get("Input"), level=1)
     # get_runs_folder(folder=folders_runs.get("Input"), level=1)
-    print("Repository")
+    # print("Repository")
     runs_repository = get_directories(root_dir=folders_runs.get("Repository"), level=3)
     # get_runs_folder(folder=folders_runs.get("Repository"), level=3)
-    print("Archives")
+    # print("Archives")
     runs_archives = get_directories(root_dir=folders_runs.get("Archives"), level=3)
+
+    # api: STARK.z6rNIrvUrqU7.ID-d00a3a152268e4f8dec9f252a3000d5f29c8fbab-NAME-RUN_TEST.info json output
+    # listener: ID-a569dc2c79a75b78f67025bc6360c489fb1a3b32-NAME-RUN_TEST_new.log
+
+    # listener_files = find_most_recent_file(
+    #     folder=folders_services.get("Listener"), pattern="ID-*-NAME-*.log"
+    # )
+    # listener_files = find_files(
+    #     folder=folders_services.get("Listener"), pattern="*.log"
+    # )
+    # api_files_info = find_files(
+    #     folder=folders_services.get("API"),
+    #     pattern="STARK.*.ID-*-NAME-*.info",
+    # )
+    # api_files_json = find_files(
+    #     folder=folders_services.get("API"),
+    #     pattern="STARK.*.ID-*-NAME-*.json",
+    # )
+    # api_files_output = find_files(
+    #     folder=folders_services.get("API"),
+    #     pattern="STARK.*.ID-*-NAME-*.output",
+    # )
+    # print(f"listener_files={listener_files}")
+    # print(f"api_files_info={api_files_info}")
+    # print(f"api_files_json={api_files_json}")
+    # print(f"api_files_output={api_files_output}")
+
+    files_log = get_files_log(
+        folders=folders_services,
+        exts=["log", "info", "json", "output"],
+    )
+    # print(f"files_log={files_log}")
+    logs = {}
+    for run_name in files_log:
+        logs[run_name] = {}
+        for log_source in files_log.get(run_name):
+            if files_log.get(run_name).get(log_source).get("mtime", 0) > logs.get(
+                run_name
+            ).get("mtime", 0):
+                logs[run_name] = files_log.get(run_name).get(log_source)
+                # for item in files_log.get(run_name).get(log_source):
+                #     print(f"{run_name} - {log_source} - {item}")
+    # print(f"logs={logs}")
 
     # print(f"Input: {len(runs_input)}")
     # print(f"Input: {runs_input}")
@@ -194,14 +246,16 @@ def populate():
         "input": runs_input,
         "repository": runs_repository,
         "archives": runs_archives,
+        "analysis": logs,
     }
+
     runs_infos = {}
     for source in sources:
         runs_source = sources.get(source)
         for run_name in runs_source:
             if run_name not in runs_infos:
                 runs_infos[run_name] = {}
-            print(f"run_name={run_name}")
+            # print(f"run_name={run_name}")
             for item in runs_source.get(run_name):
                 runs_infos[run_name][f"{source}_{item}"] = runs_source.get(
                     run_name
@@ -213,17 +267,17 @@ def populate():
             #     "mtime", None
             # )
 
-    print(f"runs_infos={runs_infos}")
+    # print(f"runs_infos={runs_infos}")
     for run_name in runs_infos:
-        print(f"run_name={run_name}")
+        # print(f"run_name={run_name}")
         run_infos = runs_infos.get(run_name)
-        print(f"Run infos {run_infos}")
+        # print(f"Run infos {run_infos}")
         run_check = Runs.query.filter_by(name=run_name).first()
         inserted = False
+
         if not run_check:
             # Insert run
             print(f"Run '{run_name}' insert")
-
             run = Runs(name=run_name)
             db.session.add(run)
             inserted = True
@@ -231,8 +285,7 @@ def populate():
             # db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
             # db.session.commit()
 
-        # Update run
-        print(f"Run '{run_name} update")
+        # INPUT update
         run_infos_extra = {}
         if inserted or (
             run_infos.get("input_mtime", None)
@@ -246,51 +299,158 @@ def populate():
                 and os.path.isdir(input_path)
                 and os.path.isfile(os.path.join(input_path, "SampleSheet.csv"))
             ):
-                run_infos_extra["input_samplesheet"] = os.path.join(
-                    input_path, "SampleSheet.csv"
-                )
+                # run_infos_extra["input_samplesheet"] = os.path.join(
+                #     input_path, "SampleSheet.csv"
+                # )
+                run_infos_extra["input_samplesheet"] = open(
+                    str(os.path.join(input_path, "SampleSheet.csv")), "r"
+                ).read()
             if (
                 input_path
                 and os.path.isdir(input_path)
                 and os.path.isfile(os.path.join(input_path, "RTAComplete.txt"))
             ):
-                run_infos_extra["input_rtacomplete"] = os.path.join(
-                    input_path, "RTAComplete.txt"
-                )
+                # run_infos_extra["input_rtacomplete"] = os.path.join(
+                #     input_path, "RTAComplete.txt"
+                # )
+                run_infos_extra["input_rtacomplete"] = open(
+                    os.path.join(input_path, "RTAComplete.txt"), "r"
+                ).read()
 
+        # REPOSITORY update
         if inserted or (
             run_infos.get("repository_mtime", None)
             and run_check.repository_mtime
             and run_infos.get("repository_mtime", 0) > run_check.repository_mtime
         ):
+            repository_path = run_infos.get("repository_path", None)
+
+            # Group
             run_infos_extra["group"] = os.path.basename(
                 os.path.dirname(os.path.dirname(run_infos.get("repository_path", "")))
             )
+
+            # Project
             run_infos_extra["project"] = os.path.basename(
                 os.path.dirname(run_infos.get("repository_path", ""))
             )
-            # run_repository_infos = {
-            #     "group": os.path.basename(
-            #         os.path.dirname(
-            #             os.path.dirname(run_infos.get("repository_path", ""))
-            #         )
-            #     ),
-            #     "project": os.path.basename(
-            #         os.path.dirname(run_infos.get("repository_path", ""))
-            #     ),
-            # }
-            print(f"run_infos_extra={run_infos_extra}")
-            # exit()
+
+            # STARKComplete
+            if (
+                repository_path
+                and os.path.isdir(repository_path)
+                and os.path.isfile(
+                    os.path.join(repository_path, "STARKCopyComplete.txt")
+                )
+            ):
+                run_infos_extra["repository_starkcomplete"] = open(
+                    os.path.join(repository_path, "STARKCopyComplete.txt"), "r"
+                ).read()
+
+            # Analysis log
+            analysis_log = find_most_recent_file(
+                folder=repository_path, pattern="STARK.*.analysis.log"
+            )
+            if (
+                repository_path
+                and os.path.isdir(repository_path)
+                and analysis_log
+                and os.path.isfile(analysis_log)
+            ):
+                run_infos_extra["repository_analysislog"] = open(
+                    analysis_log, "r"
+                ).read()
+
+            # Config
+            config_log = find_most_recent_file(
+                folder=repository_path, pattern="STARK.*.config"
+            )
+            if (
+                repository_path
+                and os.path.isdir(repository_path)
+                and config_log
+                and os.path.isfile(config_log)
+            ):
+                run_infos_extra["repository_config"] = open(config_log, "r").read()
+
+        # ARCHIVES update
+        if inserted or (
+            run_infos.get("archives_mtime", None)
+            and run_check.archives_mtime
+            and run_infos.get("archives_mtime", 0) > run_check.archives_mtime
+        ):
+            archives_path = run_infos.get("archives_path", None)
+
+            if (
+                run_infos.get("archives_path", "")
+                and "group" not in run_infos_extra
+                and "project" not in run_infos_extra
+            ):
+                # Group
+                run_infos_extra["group"] = os.path.basename(
+                    os.path.dirname(os.path.dirname(run_infos.get("archives_path", "")))
+                )
+
+                # Project
+                run_infos_extra["project"] = os.path.basename(
+                    os.path.dirname(run_infos.get("archives_path", ""))
+                )
+
+            # STARKComplete
+            if (
+                archives_path
+                and os.path.isdir(archives_path)
+                and os.path.isfile(os.path.join(archives_path, "STARKCopyComplete.txt"))
+            ):
+                run_infos_extra["archives_starkcomplete"] = open(
+                    os.path.join(archives_path, "STARKCopyComplete.txt"), "r"
+                ).read()
+
+            # Analysis log
+            analysis_log = find_most_recent_file(
+                folder=archives_path, pattern="STARK.*.analysis.log"
+            )
+            if (
+                archives_path
+                and os.path.isdir(archives_path)
+                and analysis_log
+                and os.path.isfile(analysis_log)
+            ):
+                run_infos_extra["archives_analysislog"] = open(analysis_log, "r").read()
+
+            # Config
+            config_log = find_most_recent_file(
+                folder=archives_path, pattern="STARK.*.config"
+            )
+            if (
+                archives_path
+                and os.path.isdir(archives_path)
+                and config_log
+                and os.path.isfile(config_log)
+            ):
+                run_infos_extra["archives_config"] = open(config_log, "r").read()
 
             # db.session.commit()
-        else:
-            print(f"Run '{run_name} no update needed")
+        # else:
+        #     print(f"Run '{run_name} no update needed")
 
         if run_infos_extra:
+            print(f"Run '{run_name} update")
             db.session.query(Runs).filter(Runs.name == run_name).update(run_infos_extra)
-
+        # else:
+        #     print(f"Run '{run_name} no update needed")
         db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
         db.session.commit()
+
+        # print("")
+        run_check = Runs.query.filter_by(name=run_name).first()
+        # print(f"run_check={run_check.name}")
+        run_status = run_status_calculation(run=run_check)
+        # print(f"run_check2={run_check.name}")
+        # print(f"run_status={run_status}")
+        db.session.query(Runs).filter(Runs.name == run_name).update(run_status)
+        db.session.commit()
+
     # else:
     #     # Insert run
     #     print(f"Run '{run_name}' insert")
@@ -299,6 +459,104 @@ def populate():
     #     db.session.add(run)
     #     db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
     #     db.session.commit()
+
+
+def run_status_calculation(run) -> dict:
+
+    # primary
+    # secondary
+    # success
+    # info
+    # warning
+    # danger
+
+    # print(f"run={run.name}")
+    status = {
+        "status_sequencing": run.status_sequencing,
+        "status_analysis": run.status_analysis,
+        "status_repository": run.status_repository,
+        "status_archives": run.status_archives,
+    }
+
+    # INPUT
+
+    if run.input_mtime > 0:
+        status["status_sequencing"] = "warning"
+    if run.input_samplesheet is None or not run.input_samplesheet:
+        status["status_sequencing"] = "info"
+    if run.input_rtacomplete is not None:
+        status["status_sequencing"] = "success"
+    if not status["status_sequencing"]:
+        status["status_sequencing"] = "secondary"
+
+    # ANALYSIS
+    if run.analysis_mtime > 0:
+        status["status_analysis"] = "warning"
+    if not status["status_analysis"]:
+        status["status_analysis"] = "secondary"
+
+    # REPOSITORY
+    if run.repository_mtime > 0:
+        status["status_repository"] = "warning"
+    if run.repository_starkcomplete is not None:
+        status["status_repository"] = "success"
+    if not status["status_repository"]:
+        status["status_repository"] = status["status_analysis"]
+
+    # ARCHIVES
+    if run.archives_mtime > 0:
+        status["status_archives"] = "warning"
+    if run.archives_starkcomplete is not None:
+        status["status_archives"] = "success"
+    if not status["status_archives"]:
+        status["status_archives"] = "secondary"
+
+    return status
+
+
+def activity_stats(runs: dict) -> dict:
+    """ """
+
+    status_map = {
+        "secondary": "unknown",
+        "info": "waiting",
+        "warning": "warning",
+        "success": "success",
+        "danger": "error",
+    }
+    activity_statistics = {
+        "Sequencing": {
+            "secondary": 0,
+            "info": 0,
+            "warning": 0,
+            "success": 0,
+            "danger": 0,
+        },
+        "Repository": {
+            "secondary": 0,
+            "info": 0,
+            "warning": 0,
+            "success": 0,
+            "danger": 0,
+        },
+        "Archives": {
+            "secondary": 0,
+            "info": 0,
+            "warning": 0,
+            "success": 0,
+            "danger": 0,
+        },
+    }
+    for run in runs:
+        for step in activity_statistics:
+            # val = getattr(run, f"status_{step}")
+            # print(val)
+            status = getattr(run, f"status_{step.lower()}")
+            activity_statistics[step][status] += 1
+    print("activity_statistics")
+    print(activity_statistics)
+
+    return activity_statistics
 
 
 @app.route("/profile", methods=["GET", "POST"])
@@ -326,14 +584,6 @@ def admin_populate():
     if user.is_admin:
         populate()
         return render_template("admin.html", success="Populate OK")
-
-    # return render_template(
-    #     "profile.html",
-    #     success=result.get("success"),
-    #     info=result.get("info"),
-    #     warning=result.get("warning"),
-    #     error=result.get("error"),
-    # )
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -369,7 +619,6 @@ def register():
             )
             db.session.add(user)
             db.session.commit()
-        # return redirect(url_for("login"), success=f"User '{username}' registered!")
         return render_template("login.html", success=f"User '{username}' registered!")
 
     return render_template("sign_up.html")
@@ -415,51 +664,81 @@ def logout():
 
 @app.route("/")
 def home():
-    # source = "Repository"
-    # folder = folders_runs.get(source, None)
-    # runs = get_runs(folder=folder, type=source)
-    # runs_input = get_runs(folder=folders_runs.get("Input", None), type="Input")
-    # runs_repository = get_runs(
-    #     folder=folders_runs.get("Repository", None), type="Repository"
-    # )
-    # runs_archives = get_runs(folder=folders_runs.get("Archives", None), type="Archives")
-    # runs = (
-    #     list(runs_input.keys())
-    #     + list(runs_repository.keys())
-    #     + list(runs_archives.keys())
-    # )
-    # runs_grouped = {
-    #     "Input": runs_input,
-    #     "Repository": runs_repository,
-    #     "Archives": runs_archives,
-    # }
-    # runs_counts = {
-    #     "Input": len(runs_input),
-    #     "Repository": len(runs_repository),
-    #     "Archives": len(runs_archives),
-    # }
-    all_runs = Runs.query.order_by(
-        Runs.input_mtime,
-        Runs.repository_mtime,
-        Runs.archives_mtime,
-    ).all()
+    fields = [
+        "name",
+        "input_mtime",
+        "input_last_modified",
+        "repository_last_modified",
+        "archives_last_modified",
+        "archives_mtime",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    # print(f"fields={fields}")
+    # print(f"class_fields={class_fields}")
+    all_runs = (
+        Runs.query.with_entities(*class_fields)
+        .order_by(
+            Runs.input_mtime,
+            Runs.repository_mtime,
+            Runs.archives_mtime,
+        )
+        .all()
+    )
+    # for run in all_runs:
+    #     print(run.name)
+    #     # print(run.project)
+    # SomeModel.col1.label('some alias name')
     # print(all_runs)
     all_runs.reverse()
-    # print(all_runs)
+    print(all_runs)
+    # repos = {
+    #     "Input": Runs.query.filter(Runs.input_path != None).all(),
+    #     "Repository": Runs.query.filter(Runs.repository_path != None).all(),
+    #     "Archives": Runs.query.filter(Runs.archives_path != None).all(),
+    # }
+    # repos = {
+    #     "Input": Runs.query.filter(Runs.input_path != None)
+    #     .with_entities(*class_fields)
+    #     .all(),
+    #     "Repository": Runs.query.filter(Runs.repository_path != None)
+    #     .with_entities(*class_fields)
+    #     .all(),
+    #     "Archives": Runs.query.filter(Runs.archives_path != None)
+    #     .with_entities(*class_fields)
+    #     .all(),
+    # }
     repos = {
-        "Input": Runs.query.filter(Runs.input_path != None).all(),
-        "Repository": Runs.query.filter(Runs.repository_path != None).all(),
-        "Archives": Runs.query.filter(Runs.archives_path != None).all(),
+        "Input": Runs.query.filter(Runs.input_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Repository": Runs.query.filter(Runs.repository_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Archives": Runs.query.filter(Runs.archives_path != None)
+        .with_entities(Runs.name)
+        .all(),
     }
+    all_runs_names = Runs.query.with_entities(Runs.name).all()
+
+    activity_statistics = activity_stats(all_runs)
 
     modules = get_modules(folder=modules_dir)
+    limit = 12
     return render_template(
         "main.html",
-        runs=all_runs,
+        runs=all_runs[:limit],
+        all_runs_names=all_runs_names,
         runs_number=len(all_runs),
-        limit=8,
+        limit=limit,
         modules=modules,
         repos=repos,
+        activity_statistics=activity_statistics,
     )
 
 
@@ -514,7 +793,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--ihm", action="store_true", help="Run IHM server")
 
     args = parser.parse_args()
-    print(args.populate, args.listener, args.ihm)
+    # print(args.populate, args.listener, args.ihm)
 
     if not args.populate and not args.listener and not args.ihm:
         parser.print_help()
