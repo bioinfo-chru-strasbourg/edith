@@ -12,14 +12,19 @@
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/runs">Statistics</a>
+            <a class="nav-link" href="/statistics">Statistics</a>
           </li>
+          {% if current_user.is_authenticated %}
           <li class="nav-item">
-            <a class="nav-link" href="/runs">Activity</a>
+            <a class="nav-link" href="/activity">Activity</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="/runs">Reports</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/modules">Modules</a>
+          </li>
+          {% endif %}
           <li class="nav-item">
             <a class="nav-link" href="/help">Help</a>
           </li>

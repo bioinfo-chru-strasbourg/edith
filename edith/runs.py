@@ -1,3 +1,4 @@
+import datetime
 import glob
 import os
 import re
@@ -5,20 +6,15 @@ import time
 from config.config import folders_runs
 
 
-def get_directories(root_dir: str, level: int = 1):
+def get_directories(root_dir: str, level: int = 1, struct_filter: dict = {}):
+
+    # Init
     directories = {}
-    # if level == 0:
-    #     # Si le niveau demandé est 0, on récupère simplement le répertoire racine
-    #     dir_stat = os.stat(root_dir)
-    #     last_modified = time.ctime(dir_stat.st_mtime)
-    #     directories[os.path.basename(root_dir)] = {
-    #         "path": root_dir,
-    #         "last_modified": last_modified,
-    #     }
-    #     return directories
 
     # Fonction pour récupérer les répertoires du niveau spécifié
-    def get_directories_at_level(directory, current_level):
+    def get_directories_at_level(
+        directory, current_level: int = 1, struct_filter: dict = {}
+    ):
         if current_level == level:
             # Si le niveau actuel correspond au niveau spécifié, récupérer les répertoires à ce niveau
             for entry in os.listdir(directory):
@@ -26,7 +22,7 @@ def get_directories(root_dir: str, level: int = 1):
                 if os.path.isdir(entry_path):
                     # Si l'entrée est un répertoire, récupérer les informations et les ajouter au dictionnaire
                     # dir_stat = os.stat(entry_path)
-                    last_modified = time.ctime(os.stat(entry_path).st_mtime)
+                    # last_modified = time.ctime(os.stat(entry_path).st_mtime)
                     # mtime = os.path.getmtime(entry_path)
                     list_of_files = os.listdir(entry_path)
                     if list_of_files:
@@ -36,6 +32,9 @@ def get_directories(root_dir: str, level: int = 1):
                         )
                     else:
                         mtime = 0
+                    last_modified = datetime.datetime.fromtimestamp(mtime).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                     # if samples:
                     #     nb_samples = count_directories(directory=entry_path)
                     # else:
@@ -48,11 +47,14 @@ def get_directories(root_dir: str, level: int = 1):
         else:
             # Sinon, parcourir récursivement les sous-répertoires
             for entry in os.listdir(directory):
-                entry_path = os.path.join(directory, entry)
-                if os.path.isdir(entry_path):
-                    get_directories_at_level(entry_path, current_level + 1)
+                if not struct_filter or entry in struct_filter:
+                    entry_path = os.path.join(directory, entry)
+                    if os.path.isdir(entry_path):
+                        get_directories_at_level(
+                            entry_path, current_level + 1, struct_filter.get(entry, {})
+                        )
 
-    get_directories_at_level(root_dir, 1)
+    get_directories_at_level(root_dir, 1, struct_filter=struct_filter)
     return directories
 
 

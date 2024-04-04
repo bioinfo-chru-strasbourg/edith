@@ -4,10 +4,6 @@
     {% block content %}
     <div class="container">
 
-        <!-- Main Summary -->
-        {% include 'main_summary.html' %}
-
-        
         {% if current_user.is_authenticated %}
 
             <!-- Main Runs -->
@@ -16,9 +12,6 @@
             {% else %}
             {% include 'main_runs_table.html' %}
             {% endif %}  
-
-            <!-- Main Modules -->
-            {% include 'main_modules.html' %}
 
         {% endif %}
 

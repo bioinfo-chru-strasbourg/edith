@@ -1,0 +1,18 @@
+{%- extends "base.html" %}
+
+<body>
+    {% block content %}
+    <div class="container">
+
+        {% if current_user.is_authenticated %}
+
+            <!-- Main Modules -->
+            {% include 'main_modules.html' %}
+
+        {% endif %}    
+
+
+    </div>
+
+    {% endblock %}
+</body>

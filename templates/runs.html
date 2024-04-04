@@ -25,17 +25,17 @@
                 <tr class="table">
                     <th class="text-primary">
                         <span class="">
-                            {{ run }} 
+                            {{ run.name }} 
                         </span>
                         
                     </th>
-                    {% if title != "Input" %}
+                    {% if title != "Input" and True %}
                         <td>
-                            <span class="text-body-tertiary">{{ runs.get(run).get("project") }}</span>
+                            <span class="text-body-tertiary">{{ run.project }}</span>
                             
                         </td>
                         <td>
-                            <span class="text-body-tertiary">{{ runs.get(run).get("group") }}</span>
+                            <span class="text-body-tertiary">{{ run.group }}</span>
                         </td>
                     {% endif %}
                 </tr>

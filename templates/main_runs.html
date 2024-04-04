@@ -6,8 +6,8 @@
 
 {% set status_map = {
     "secondary": "unknown",
-    "info": "waiting",
-    "warning": "processing",
+    "info": "processing",
+    "warning": "warning",
     "success": "success",
     "danger": "error",
 } %}
@@ -62,16 +62,7 @@
                                     {% endif %}
                                 </th>
                                 <td class="text-primary">
-                                    {% if run.input_last_modified != None %}
-                                    {% set date = run.input_last_modified %}
-                                    {% elif run.repository_last_modified  %}
-                                    {% set date = run.repository_last_modified %}
-                                    {% elif run.archives_last_modified %}
-                                    {% set date = run.archives_last_modified %}
-                                    {% else %}
-                                    {% set date = "" %}
-                                    {% endif %}
-                                    <span class="lead text-body-tertiary"><small>{{ date }}</small></span>
+                                    <span class="lead text-body-tertiary"><small>{{ run.last_modified }}</small></span>
                                 </td>
                                 <td class="text-primary">
                                     <!--                                     

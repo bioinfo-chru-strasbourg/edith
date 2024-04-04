@@ -6,10 +6,11 @@
 
 {% set status_map = {
     "secondary": "unknown",
-    "info": "waiting",
-    "warning": "processing",
+    "info": "processing",
+    "warning": "warning",
     "success": "success",
     "danger": "error",
+    "None": "unknown",
 } %}
 
 <div class="row">
@@ -20,8 +21,6 @@
 
             <div class="card-header h5">List of recent runs [{{recent_runs}}/{{runs_number}}]</div>
 
-        
-
         <div class="row">
 
             {% for run in runs %}
@@ -30,7 +29,7 @@
                 <div class="list-group" >
                     <a href="#" class="list-group-item list-group-item-action flex-column align-items-start">
                     <div class="d-flex w-100 justify-content-between">
-                        <p class="mb-1">{{run.name}}</p>
+                        <p class="mb-1">{{run.name}}</p> <span class="lead text-body-tertiary"><small>{{ run.last_modified }}</small></span>
                     </div>
                     <div class="progress">
                         <div class="progress-bar bg-{{run.status_sequencing}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="sequencing {{status_map.get(run.status_sequencing)}}"></div>

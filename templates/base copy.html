@@ -1,0 +1,82 @@
+{%- extends "bootstrap/base.html" %}
+<head>
+   {% block styles %}
+   {{super()}}
+   <link rel="stylesheet"
+      href="{{url_for('static', filename='bootstrap.css')}}">
+   <link rel="icon" 
+      type="image/png" 
+      href="static/icon.png">
+    <style>
+        * {
+          box-sizing: border-box;
+        }
+        
+        .column100 {
+          float: left;
+          width: 100%;
+          padding: 10px;
+        }
+        .column50 {
+          float: left;
+          width: 50%;
+          padding: 10px;
+        }
+        .column33 {
+          float: left;
+          width: 33.33%;
+          padding: 10px;
+        }
+        .column25 {
+          float: left;
+          width: 25%;
+          padding: 10px;
+        }
+        .center {
+          margin: auto;
+        }
+
+        .footer { 
+          position: absolute;
+          bottom: 0; 
+          /* left: 0;  */
+          z-index: 10;
+        }
+
+        /* Create two equal columns that floats next to each other */
+        .column2 {
+          float: left;
+          width: 50%;
+          padding: 10px;
+        }
+
+        .column3 {
+          float: left;
+          width: 33%;
+          padding: 10px;
+        }
+
+        .column4 {
+          float: left;
+          width: 25%;
+          padding: 10px;
+        }
+        
+        /* Clear floats after the columns */
+        .row:after {
+          content: "";
+          display: table;
+          clear: both;
+        }
+    </style>
+   {% endblock %}
+   {% block title %}
+   {% if title %}
+      {{ title }}
+   {% else %}
+      EDITH
+   {% endif %}
+   {% endblock %}
+   {% include 'nav.html' %}
+
+</head>

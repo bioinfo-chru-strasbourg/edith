@@ -1,5 +1,7 @@
 import argparse
+import datetime
 import os
+import re
 import sqlite3
 import time
 from flask import Flask, render_template, request, url_for, redirect, jsonify
@@ -92,6 +94,8 @@ class Groups(UserMixin, db.Model):
 class Runs(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(250), unique=True, nullable=False)
+    mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+    last_modified = db.Column(db.String(100), unique=False, nullable=True)
     input_path = db.Column(db.String(500), unique=False, nullable=True)
     input_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
     input_last_modified = db.Column(db.String(100), unique=False, nullable=True)
@@ -113,9 +117,15 @@ class Runs(UserMixin, db.Model):
     analysis_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
     analysis_last_modified = db.Column(db.String(100), unique=False, nullable=True)
     analysis_listener_log = db.Column(db.Text, unique=False, nullable=True)
+    analysis_listener_json = db.Column(db.Text, unique=False, nullable=True)
+    analysis_listener_info = db.Column(db.Text, unique=False, nullable=True)
+    analysis_listener_output = db.Column(db.Text, unique=False, nullable=True)
+    analysis_listener_err = db.Column(db.Text, unique=False, nullable=True)
+    analysis_api_log = db.Column(db.Text, unique=False, nullable=True)
     analysis_api_json = db.Column(db.Text, unique=False, nullable=True)
     analysis_api_info = db.Column(db.Text, unique=False, nullable=True)
     analysis_api_output = db.Column(db.Text, unique=False, nullable=True)
+    analysis_api_err = db.Column(db.Text, unique=False, nullable=True)
     group = db.Column(db.String(50), unique=False, nullable=True)
     project = db.Column(db.String(50), unique=False, nullable=True)
     status_sequencing = db.Column(db.String(50), unique=False, nullable=True)
@@ -177,14 +187,23 @@ def populate():
     # print(f"ctime={ctime}")
     # print(f"mtime={mtime}")
 
+    # struct_filter = {"DIAG": {}}
+    struct_filter = {}
+
     # print("Input")
-    runs_input = get_directories(root_dir=folders_runs.get("Input"), level=1)
+    runs_input = get_directories(
+        root_dir=folders_runs.get("Input"), level=1, struct_filter={}
+    )
     # get_runs_folder(folder=folders_runs.get("Input"), level=1)
     # print("Repository")
-    runs_repository = get_directories(root_dir=folders_runs.get("Repository"), level=3)
+    runs_repository = get_directories(
+        root_dir=folders_runs.get("Repository"), level=3, struct_filter=struct_filter
+    )
     # get_runs_folder(folder=folders_runs.get("Repository"), level=3)
     # print("Archives")
-    runs_archives = get_directories(root_dir=folders_runs.get("Archives"), level=3)
+    runs_archives = get_directories(
+        root_dir=folders_runs.get("Archives"), level=3, struct_filter=struct_filter
+    )
 
     # api: STARK.z6rNIrvUrqU7.ID-d00a3a152268e4f8dec9f252a3000d5f29c8fbab-NAME-RUN_TEST.info json output
     # listener: ID-a569dc2c79a75b78f67025bc6360c489fb1a3b32-NAME-RUN_TEST_new.log
@@ -214,7 +233,7 @@ def populate():
 
     files_log = get_files_log(
         folders=folders_services,
-        exts=["log", "info", "json", "output"],
+        exts=["log", "info", "json", "output", "err"],
     )
     # print(f"files_log={files_log}")
     logs = {}
@@ -277,7 +296,7 @@ def populate():
 
         if not run_check:
             # Insert run
-            print(f"Run '{run_name}' insert")
+            print(f"Run '{run_name}' insert...")
             run = Runs(name=run_name)
             db.session.add(run)
             inserted = True
@@ -285,13 +304,22 @@ def populate():
             # db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
             # db.session.commit()
 
-        # INPUT update
+        # Run infos extra
         run_infos_extra = {}
-        if inserted or (
+
+        # Init
+        updated = False
+
+        # INPUT update
+        if (inserted and run_infos.get("input_mtime", None)) or (
             run_infos.get("input_mtime", None)
             and run_check.input_mtime
             and run_infos.get("input_mtime", 0) > run_check.input_mtime
         ):
+
+            # Updated
+            updated = True
+
             # Find sampleSheet
             input_path = run_infos.get("input_path", None)
             if (
@@ -317,22 +345,47 @@ def populate():
                     os.path.join(input_path, "RTAComplete.txt"), "r"
                 ).read()
 
+        # ANALAYSIS update
+        if (inserted and run_infos.get("analysis_mtime", None)) or (
+            run_infos.get("analysis_mtime", None)
+            and run_check.analysis_mtime
+            and run_infos.get("analysis_mtime", 0) > run_check.analysis_mtime
+        ):
+
+            # Updated
+            updated = True
+
+            # analysis_path = run_infos.get("analysis_path", None)
+            run_files_log = files_log.get(run_check.name, {})
+            for run_file_log_type in run_files_log:
+                run_infos_extra[f"analysis_{run_file_log_type}"] = open(
+                    run_files_log.get(run_file_log_type).get("path"), "r"
+                ).read()
+                # run_infos_extra["analysis_api_info"] = open(
+                #     os.path.join(repository_path, "STARKCopyComplete.txt"), "r"
+                # ).read()
+
         # REPOSITORY update
-        if inserted or (
+        if (inserted and run_infos.get("repository_mtime", None)) or (
             run_infos.get("repository_mtime", None)
             and run_check.repository_mtime
             and run_infos.get("repository_mtime", 0) > run_check.repository_mtime
         ):
+
+            # Updated
+            updated = True
+
+            # Repository path
             repository_path = run_infos.get("repository_path", None)
 
             # Group
             run_infos_extra["group"] = os.path.basename(
-                os.path.dirname(os.path.dirname(run_infos.get("repository_path", "")))
+                os.path.dirname(os.path.dirname(repository_path))
             )
 
             # Project
             run_infos_extra["project"] = os.path.basename(
-                os.path.dirname(run_infos.get("repository_path", ""))
+                os.path.dirname(repository_path)
             )
 
             # STARKComplete
@@ -374,15 +427,20 @@ def populate():
                 run_infos_extra["repository_config"] = open(config_log, "r").read()
 
         # ARCHIVES update
-        if inserted or (
+        if (inserted and run_infos.get("archives_mtime", None)) or (
             run_infos.get("archives_mtime", None)
             and run_check.archives_mtime
             and run_infos.get("archives_mtime", 0) > run_check.archives_mtime
         ):
+
+            # Updated
+            updated = True
+
+            # Archives path
             archives_path = run_infos.get("archives_path", None)
 
             if (
-                run_infos.get("archives_path", "")
+                run_infos.get("archives_path", None)
                 and "group" not in run_infos_extra
                 and "project" not in run_infos_extra
             ):
@@ -435,21 +493,41 @@ def populate():
         #     print(f"Run '{run_name} no update needed")
 
         if run_infos_extra:
-            print(f"Run '{run_name} update")
+            print(f"Run '{run_name}' update...")
             db.session.query(Runs).filter(Runs.name == run_name).update(run_infos_extra)
         # else:
         #     print(f"Run '{run_name} no update needed")
-        db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
-        db.session.commit()
 
-        # print("")
-        run_check = Runs.query.filter_by(name=run_name).first()
-        # print(f"run_check={run_check.name}")
-        run_status = run_status_calculation(run=run_check)
-        # print(f"run_check2={run_check.name}")
-        # print(f"run_status={run_status}")
-        db.session.query(Runs).filter(Runs.name == run_name).update(run_status)
-        db.session.commit()
+        if inserted or updated or run_infos_extra:
+            # global mtime
+            run_infos["mtime"] = max(
+                run_check.input_mtime,
+                run_check.analysis_mtime,
+                run_check.repository_mtime,
+                run_check.archives_mtime,
+            )
+            run_infos["mtime"] = max(
+                run_infos.get("input_mtime", 0),
+                run_infos.get("analysis_mtime", 0),
+                run_infos.get("repository_mtime", 0),
+                run_infos.get("archives_mtime", 0),
+            )
+            run_infos["last_modified"] = datetime.datetime.fromtimestamp(
+                run_infos["mtime"]
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+            db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
+            db.session.commit()
+
+            # print("")
+            run_check = Runs.query.filter_by(name=run_name).first()
+            # print(f"run_check={run_check.name}")
+            print(f"Run '{run_name}' status...")
+            run_status = run_status_calculation(run=run_check)
+            # print(f"run_check2={run_check.name}")
+            # print(f"run_status={run_status}")
+            db.session.query(Runs).filter(Runs.name == run_name).update(run_status)
+            db.session.commit()
 
     # else:
     #     # Insert run
@@ -479,11 +557,10 @@ def run_status_calculation(run) -> dict:
     }
 
     # INPUT
-
     if run.input_mtime > 0:
-        status["status_sequencing"] = "warning"
-    if run.input_samplesheet is None or not run.input_samplesheet:
         status["status_sequencing"] = "info"
+    if run.input_samplesheet is None or not run.input_samplesheet:
+        status["status_sequencing"] = "warning"
     if run.input_rtacomplete is not None:
         status["status_sequencing"] = "success"
     if not status["status_sequencing"]:
@@ -491,23 +568,45 @@ def run_status_calculation(run) -> dict:
 
     # ANALYSIS
     if run.analysis_mtime > 0:
-        status["status_analysis"] = "warning"
-    if not status["status_analysis"]:
-        status["status_analysis"] = "secondary"
+        status["status_analysis"] = "info"
+    # info : Exit status: died with exit code
+    if run.analysis_api_info is not None:
+        # print(f"{run.name}")
+        find_error = re.findall(
+            r"Exit status. died with exit code", run.analysis_api_info
+        )
+        # print(find_error)
+        if find_error:
+            # print("found")
+            status["status_analysis"] = "danger"
+    # if not status["status_analysis"]:
+    #     status["status_analysis"] = "secondary"
+    # print(status["status_analysis"])
 
     # REPOSITORY
-    if run.repository_mtime > 0:
-        status["status_repository"] = "warning"
-    if run.repository_starkcomplete is not None:
-        status["status_repository"] = "success"
-    if not status["status_repository"]:
+    if status["status_analysis"] == "danger":
         status["status_repository"] = status["status_analysis"]
+    else:
+        if run.repository_mtime > 0:
+            status["status_repository"] = "info"
+        if run.repository_starkcomplete is not None:
+            status["status_repository"] = "success"
+        if run.repository_analysislog is not None:
+            find_error = re.findall(rf"\*\*\*", run.repository_analysislog)
+            if find_error:
+                status["status_repository"] = "danger"
+        if not status["status_repository"]:
+            status["status_repository"] = "secondary"
 
     # ARCHIVES
     if run.archives_mtime > 0:
-        status["status_archives"] = "warning"
+        status["status_archives"] = "info"
     if run.archives_starkcomplete is not None:
         status["status_archives"] = "success"
+    if run.archives_analysislog is not None:
+        find_error = re.findall(rf"\*\*\*", run.archives_analysislog)
+        if find_error:
+            status["status_archives"] = "danger"
     if not status["status_archives"]:
         status["status_archives"] = "secondary"
 
@@ -517,13 +616,13 @@ def run_status_calculation(run) -> dict:
 def activity_stats(runs: dict) -> dict:
     """ """
 
-    status_map = {
-        "secondary": "unknown",
-        "info": "waiting",
-        "warning": "warning",
-        "success": "success",
-        "danger": "error",
-    }
+    # status_map = {
+    #     "secondary": "unknown",
+    #     "info": "waiting",
+    #     "warning": "warning",
+    #     "success": "success",
+    #     "danger": "error",
+    # }
     activity_statistics = {
         "Sequencing": {
             "secondary": 0,
@@ -552,9 +651,9 @@ def activity_stats(runs: dict) -> dict:
             # val = getattr(run, f"status_{step}")
             # print(val)
             status = getattr(run, f"status_{step.lower()}")
+            if not status:
+                status = "secondary"
             activity_statistics[step][status] += 1
-    print("activity_statistics")
-    print(activity_statistics)
 
     return activity_statistics
 
@@ -666,11 +765,8 @@ def logout():
 def home():
     fields = [
         "name",
-        "input_mtime",
-        "input_last_modified",
-        "repository_last_modified",
-        "archives_last_modified",
-        "archives_mtime",
+        "mtime",
+        "last_modified",
         "project",
         "group",
         "status_sequencing",
@@ -679,40 +775,9 @@ def home():
         "status_archives",
     ]
     class_fields = [getattr(Runs, f) for f in fields]
-    # print(f"fields={fields}")
-    # print(f"class_fields={class_fields}")
-    all_runs = (
-        Runs.query.with_entities(*class_fields)
-        .order_by(
-            Runs.input_mtime,
-            Runs.repository_mtime,
-            Runs.archives_mtime,
-        )
-        .all()
-    )
-    # for run in all_runs:
-    #     print(run.name)
-    #     # print(run.project)
-    # SomeModel.col1.label('some alias name')
-    # print(all_runs)
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
     all_runs.reverse()
-    print(all_runs)
-    # repos = {
-    #     "Input": Runs.query.filter(Runs.input_path != None).all(),
-    #     "Repository": Runs.query.filter(Runs.repository_path != None).all(),
-    #     "Archives": Runs.query.filter(Runs.archives_path != None).all(),
-    # }
-    # repos = {
-    #     "Input": Runs.query.filter(Runs.input_path != None)
-    #     .with_entities(*class_fields)
-    #     .all(),
-    #     "Repository": Runs.query.filter(Runs.repository_path != None)
-    #     .with_entities(*class_fields)
-    #     .all(),
-    #     "Archives": Runs.query.filter(Runs.archives_path != None)
-    #     .with_entities(*class_fields)
-    #     .all(),
-    # }
+
     repos = {
         "Input": Runs.query.filter(Runs.input_path != None)
         .with_entities(Runs.name)
@@ -739,6 +804,7 @@ def home():
         modules=modules,
         repos=repos,
         activity_statistics=activity_statistics,
+        runs_mode="table",
     )
 
 
@@ -755,11 +821,99 @@ def runs():
 @login_required
 def runs_source(source):
     if current_user.is_authenticated:
-        folder = folders_runs.get(source, None)
-        runs = get_runs(folder=folder, type=source)
-        return render_template("runs.html", title=source, runs=runs)
+        fields = [
+            "name",
+            "mtime",
+            "last_modified",
+            "project",
+            "group",
+            "status_sequencing",
+            "status_analysis",
+            "status_repository",
+            "status_archives",
+        ]
+        class_fields = [getattr(Runs, f) for f in fields]
+        all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+        all_runs.reverse()
+        return render_template("runs.html", title=source, runs=all_runs)
     else:
         return redirect(url_for("login"))
+
+
+@app.route("/modules")
+@login_required
+def modules():
+    if current_user.is_authenticated:
+        modules = get_modules(folder=modules_dir)
+        return render_template("modules.html", modules=modules)
+    else:
+        return redirect(url_for("login"))
+
+
+@app.route("/statistics")
+def statistics():
+    fields = [
+        "name",
+        "mtime",
+        "last_modified",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+    all_runs.reverse()
+
+    repos = {
+        "Input": Runs.query.filter(Runs.input_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Repository": Runs.query.filter(Runs.repository_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Archives": Runs.query.filter(Runs.archives_path != None)
+        .with_entities(Runs.name)
+        .all(),
+    }
+
+    activity_statistics = activity_stats(all_runs)
+
+    return render_template(
+        "statistics.html",
+        repos=repos,
+        activity_statistics=activity_statistics,
+    )
+
+
+@app.route("/activity")
+@login_required
+def activity():
+    fields = [
+        "name",
+        "mtime",
+        "last_modified",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+    all_runs.reverse()
+
+    limit = 1200
+    return render_template(
+        "activity.html",
+        runs=all_runs[:limit],
+        runs_number=len(all_runs),
+        limit=limit,
+        runs_mode="cards",
+    )
 
 
 @app.route("/about")
