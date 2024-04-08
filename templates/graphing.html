@@ -1,0 +1,60 @@
+{%- extends "base.html" %}
+
+{% block body %}
+<body class="body">
+
+    {% block content %}
+    <div class="container">
+
+        <div class="row">
+
+            <div class="column100">
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header h5">Runs activity by month</div>
+                    <div class="card-body">
+                        <p class="card-text">Activity of runs/analyses for each month.</p>
+                    </div>
+                    <ul class="list-group">
+                        <embed type="image/svg+xml" src={{date_graph_data|safe}} />
+                    </ul>
+                </div>
+                
+            </div>
+
+        
+        </div>
+
+        <div class="row">
+
+            <div class="column50">
+
+
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header h5">Groups and Projects</div>
+                    <div class="card-body">
+                        <p class="card-text">Number of runs by groups and projects.</p>
+                    </div>
+                    <ul class="list-group">
+                        <embed type="image/svg+xml" src={{pie_graph_data|safe}} />
+                    </ul>
+                </div>
+                
+            </div>
+        
+        
+        </div>
+
+        
+
+        <!-- <div class="container" align="left">
+                <embed type="image/svg+xml" src={{pie_graph_data|safe}} style='max-width:1000px'/>
+        </div>
+        <div class="container" align="left">
+            <embed type="image/svg+xml" src={{date_graph_data|safe}} style='max-width:1000px'/>
+    </div> -->
+
+    </div>
+    {% endblock %}
+</body>
+{% endblock %}

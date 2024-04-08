@@ -3,7 +3,8 @@ import glob
 import os
 import re
 import time
-from config.config import folders_runs
+
+# from config.config import folders_runs
 
 
 def get_directories(root_dir: str, level: int = 1, struct_filter: dict = {}):

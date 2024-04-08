@@ -7,9 +7,13 @@ import sqlite3
 import time
 import zlib
 from flask import Flask, render_template, request, url_for, redirect, jsonify
+import pygal
+from pygal.style import CleanStyle
+import pandas as pd
 
 # from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 from sqlalchemy.orm import load_only
 from flask_login import (
     LoginManager,
@@ -20,6 +24,7 @@ from flask_login import (
     login_required,
 )
 from flask_bootstrap import Bootstrap
+import yaml
 from edith.runs import (
     find_files,
     find_most_recent_file,
@@ -27,18 +32,28 @@ from edith.runs import (
     get_files_log,
 )  # , get_runs  # , get_runs_folder
 from edith.modules import get_modules
-from config.config import folders_runs, modules_dir, folders_services
-
-# from objects.models import Users, Groups
-
-# Bootstrap https://bootswatch.com/lux/
 
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db.sqlite"
-app.config["SECRET_KEY"] = "abc"
-# app.config["ADMIN"] = "admin"
 
+# Config
+config_file = os.path.join(app.root_path, "config", "config.json")
+with open(config_file, "r") as config_file_pointer:
+    config_json = yaml.safe_load(config_file_pointer)
+
+
+# All EDITH config
+app.config["EDITH"] = config_json
+
+# SQLAlchemy
+app.config["SQLALCHEMY_DATABASE_URI"] = config_json.get("app", {}).get(
+    "SQLALCHEMY_DATABASE_URI", "sqlite:///db.sqlite"
+)
+
+# Secret key
+app.config["SECRET_KEY"] = config_json.get("app", {}).get("SECRET_KEY", "abcdef")
+
+# Login manager
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -113,9 +128,9 @@ class Users(UserMixin, db.Model):
             return {"info": f"User '{self.username}' not updated (no need)!"}
 
 
-class Groups(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    groupname = db.Column(db.String(250), unique=True, nullable=False)
+# class Groups(UserMixin, db.Model):
+#     id = db.Column(db.Integer, primary_key=True)
+#     groupname = db.Column(db.String(250), unique=True, nullable=False)
 
 
 class Runs(UserMixin, db.Model):
@@ -171,16 +186,13 @@ app.app_context().push()
 
 ### RUNS
 
-
 # DATABASE = "database.db"
-
 
 # def get_db():
 #     db = getattr(Flask, "_database", None)
 #     if db is None:
 #         db = Flask._database = sqlite3.connect(DATABASE)
 #     return db
-
 
 # @app.teardown_appcontext
 # def close_connection(exception):
@@ -206,6 +218,400 @@ def test():
     return render_template("main.html")
 
 
+@app.route("/pygal")
+def pygalexample():
+    try:
+        # graph = pygal.Line()
+        # graph.title = "% Change Coolness of programming languages over time."
+        # graph.x_labels = ["2011", "2012", "2013", "2014", "2015", "2016"]
+        # graph.add("Python", [15, 31, 89, 200, 356, 900])
+        # graph.add("Java", [15, 45, 76, 80, 91, 95])
+        # graph.add("C++", [5, 51, 54, 102, 150, 201])
+        # graph.add("All others combined!", [5, 15, 21, 55, 92, 105])
+        # graph_data = graph.render_data_uri()
+
+        # Style
+        custom_style = CleanStyle(
+            background="transparent",
+            plot_background="transparent",
+        )
+
+        # By groiups and projects
+
+        pie_chart = pygal.Pie(
+            style=custom_style, inner_radius=0.4, width=800, height=800
+        )
+        pie_chart.title = "Groups and Projects"
+        runs_by_group = (
+            Runs.query.with_entities(
+                Runs.group, Runs.project, func.count(Runs.id).label("total")
+            )
+            .group_by(Runs.group, Runs.project)
+            .all()
+        )
+        # print(runs_by_group)
+        runs_by_group_dict = {}
+        for group, project, total in runs_by_group:
+            if group and project:
+                # print(group, project, total)
+                if group not in runs_by_group_dict:
+                    runs_by_group_dict[group] = {}
+                if project not in runs_by_group_dict[group]:
+                    runs_by_group_dict[group][project] = 0
+                runs_by_group_dict[group][project] += 1
+
+        for group in runs_by_group_dict:
+            pie_chart.add(str(group), list(runs_by_group_dict.get(group).values()))
+
+        # runs_by_group_dict = dict(runs_by_group)
+        # for group in runs_by_group_dict:
+        #     # print(group)
+        #     # print(runs_by_group_dict.get(group))
+        #     pie_chart.add(str(group), runs_by_group_dict.get(group))
+        pie_graph_data = pie_chart.render_data_uri()
+
+        # Activity by month
+        runs_mtime = (
+            Runs.query.with_entities(
+                Runs.mtime, Runs.last_modified, Runs.id, Runs.group, Runs.project
+            )
+            .order_by(Runs.mtime)
+            .all()
+        )
+        runs_mtime_dict = {}
+        runs_mtime_group_dict = {}
+        for mtime, last_modified, id, group, project in runs_mtime:
+            if group and project or True:
+                day = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+                month = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m")
+                if day not in runs_mtime_dict:
+                    runs_mtime_dict[day] = 0
+                runs_mtime_dict[day] += 1
+                if group not in runs_mtime_group_dict:
+                    runs_mtime_group_dict[group] = {}
+                if day not in runs_mtime_group_dict[group]:
+                    runs_mtime_group_dict[group][day] = 0
+                runs_mtime_group_dict[group][day] += 1
+        # list_of_mtime = list(dict(runs_by_group).keys())
+
+        r = pd.date_range("2014-10", "2016-01", freq="M").strftime("%Y-%m").tolist()
+        print(f"r: {r}")
+        date_chart = pygal.Line(
+            x_label_rotation=20, fill=True, style=custom_style, width=1600, height=400
+        )
+        date_chart.title = "Runs activity by month"
+        date_chart.x_labels = list(runs_mtime_dict.keys())
+        date_chart.add("Total Nb runs", list(runs_mtime_dict.values()))
+        for group in runs_mtime_group_dict:
+            date_chart.add(f"{group}", list(runs_mtime_group_dict[group].values()))
+        date_graph_data = date_chart.render_data_uri()
+        # for day in runs_mtime_dict:
+        #     date_chart.add("Nb runs", [300, 412, 823, 672])
+
+        # date_chart = pygal.Line(x_label_rotation=20)
+        # date_chart.x_labels = map(
+        #     lambda d: d.strftime("%Y-%m-%d"),
+        #     [
+        #         datetime(2013, 1, 2),
+        #         datetime(2013, 1, 12),
+        #         datetime(2013, 2, 2),
+        #         datetime(2013, 2, 22),
+        #     ],
+        # )
+        # date_chart.add("Visits", [300, 412, 823, 672])
+        # graph_data = date_chart.render_data_uri()
+
+        # return render_template("graphing.html", graph_data=graph_data)
+        return render_template(
+            "graphing.html",
+            pie_graph_data=pie_graph_data,
+            date_graph_data=date_graph_data,
+        )
+
+    except Exception as e:
+        return str(e)
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+
+    user_id = current_user.id
+
+    if request.method == "POST":
+        # user_id = request.form.get("id", user_id)
+        user = Users.query.filter_by(id=user_id).first()
+        result = user.update_profile(dict(request.form))
+
+    else:
+        result = {}
+
+    # user = Users.query.filter_by(id=user_id).first()
+
+    return render_template(
+        "profile.html",
+        success=result.get("success"),
+        info=result.get("info"),
+        warning=result.get("warning"),
+        error=result.get("error"),
+    )
+
+
+@app.route("/populate")
+@login_required
+def admin_populate():
+    user = Users.query.filter_by(id=current_user.id).first()
+    if user.is_admin:
+        populate()
+        return render_template("admin.html", success="Populate OK")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+
+        # All users
+        all_users = Users.query.order_by(Users.username).all()
+
+        # Check admin
+        if len(all_users):
+            is_admin = False
+        else:
+            is_admin = True
+
+        # Check username
+        username = request.form.get("username")
+        user_check = Users.query.filter_by(username=username).first()
+
+        # Create user
+        if user_check:
+            return render_template(
+                "sign_up.html",
+                error=f"User '{username}' already exists. Choose another username.",
+                username=username,
+            )
+        else:
+            user = Users(
+                username=request.form.get("username"),
+                # password=request.form.get("password"),
+                password=hashlib.sha256(
+                    request.form.get("password").encode("UTF-8")
+                ).hexdigest(),
+                is_admin=is_admin,
+                groups="",
+            )
+            db.session.add(user)
+            db.session.commit()
+        return render_template("login.html", success=f"User '{username}' registered!")
+
+    # TEST
+    password = "tata"
+    print(hashlib.sha256(password.encode("UTF-8")).hexdigest())
+
+    return render_template("sign_up.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    warning = None
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username")
+        # password = request.form.get("password")
+        password = hashlib.sha256(
+            request.form.get("password").encode("UTF-8")
+        ).hexdigest()
+        user = Users.query.filter_by(username=username).first()
+        if user and user.password == password:
+            login_user(user)
+            return redirect(url_for("home"))
+        else:
+            error = f"Error in '{username}' login or password"
+    print(f"warning={warning}")
+    return render_template("login.html", warning=warning, error=error)
+
+
+@app.route("/help", methods=["GET", "POST"])
+def help():
+    return render_template("help.html")
+
+
+@app.route("/admin", methods=["GET", "POST"])
+@login_required
+def admin():
+    if current_user.is_admin:
+        all_users = Users.query.order_by(Users.username).all()
+        return render_template("admin.html", users=all_users)
+    else:
+        return redirect(url_for("login"))
+
+
+@app.route("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for("home"))
+
+
+@app.route("/")
+def home():
+    fields = [
+        "name",
+        "mtime",
+        "last_modified",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+    all_runs.reverse()
+
+    repos = {
+        "Input": Runs.query.filter(Runs.input_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Repository": Runs.query.filter(Runs.repository_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Archives": Runs.query.filter(Runs.archives_path != None)
+        .with_entities(Runs.name)
+        .all(),
+    }
+    all_runs_names = Runs.query.with_entities(Runs.name).all()
+
+    activity_statistics = activity_stats(all_runs)
+
+    modules = get_modules(folder=config_json.get("modules_dir", ""))
+    limit = 12
+    return render_template(
+        "main.html",
+        runs=all_runs[:limit],
+        all_runs_names=all_runs_names,
+        runs_number=len(all_runs),
+        limit=limit,
+        modules=modules,
+        repos=repos,
+        activity_statistics=activity_statistics,
+        runs_mode="table",
+    )
+
+
+@app.route("/runs")
+@login_required
+def runs():
+    if current_user.is_authenticated:
+        return render_template("runs.html", title="")
+    else:
+        return redirect(url_for("login"))
+
+
+@app.route("/runs_<source>")
+@login_required
+def runs_source(source):
+    if current_user.is_authenticated:
+        fields = [
+            "name",
+            "mtime",
+            "last_modified",
+            "project",
+            "group",
+            "status_sequencing",
+            "status_analysis",
+            "status_repository",
+            "status_archives",
+        ]
+        class_fields = [getattr(Runs, f) for f in fields]
+        all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+        all_runs.reverse()
+        return render_template("runs.html", title=source, runs=all_runs)
+    else:
+        return redirect(url_for("login"))
+
+
+@app.route("/modules")
+@login_required
+def modules():
+    if current_user.is_authenticated:
+        modules = get_modules(folder=config_json.get("modules_dir", ""))
+        return render_template("modules.html", modules=modules)
+    else:
+        return redirect(url_for("login"))
+
+
+@app.route("/statistics")
+def statistics():
+    fields = [
+        "name",
+        "mtime",
+        "last_modified",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+    all_runs.reverse()
+
+    repos = {
+        "Input": Runs.query.filter(Runs.input_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Repository": Runs.query.filter(Runs.repository_path != None)
+        .with_entities(Runs.name)
+        .all(),
+        "Archives": Runs.query.filter(Runs.archives_path != None)
+        .with_entities(Runs.name)
+        .all(),
+    }
+
+    activity_statistics = activity_stats(all_runs)
+
+    return render_template(
+        "statistics.html",
+        repos=repos,
+        activity_statistics=activity_statistics,
+    )
+
+
+@app.route("/activity")
+@login_required
+def activity():
+    fields = [
+        "name",
+        "mtime",
+        "last_modified",
+        "project",
+        "group",
+        "status_sequencing",
+        "status_analysis",
+        "status_repository",
+        "status_archives",
+    ]
+    class_fields = [getattr(Runs, f) for f in fields]
+    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
+    all_runs.reverse()
+
+    limit = 1200
+    return render_template(
+        "activity.html",
+        runs=all_runs[:limit],
+        runs_number=len(all_runs),
+        limit=limit,
+        runs_mode="cards",
+    )
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
 def populate():
     # atime = os.path.getatime("/tmp")
     # ctime = os.path.getctime("/tmp")
@@ -215,7 +621,9 @@ def populate():
     # print(f"mtime={mtime}")
 
     # struct_filter = {"DIAG": {}}
-    struct_filter = {}
+    folders_runs = config_json.get("folders_runs", {})
+    folders_services = config_json.get("folders_services", {})
+    struct_filter = config_json.get("struct_filter", {})
 
     # print("Input")
     runs_input = get_directories(
@@ -224,7 +632,9 @@ def populate():
     # get_runs_folder(folder=folders_runs.get("Input"), level=1)
     # print("Repository")
     runs_repository = get_directories(
-        root_dir=folders_runs.get("Repository"), level=3, struct_filter=struct_filter
+        root_dir=folders_runs.get("Repository"),
+        level=3,
+        struct_filter=struct_filter,
     )
     # get_runs_folder(folder=folders_runs.get("Repository"), level=3)
     # print("Archives")
@@ -700,286 +1110,6 @@ def activity_stats(runs: dict) -> dict:
     return activity_statistics
 
 
-@app.route("/profile", methods=["GET", "POST"])
-@login_required
-def profile():
-
-    user_id = current_user.id
-
-    if request.method == "POST":
-        # user_id = request.form.get("id", user_id)
-        user = Users.query.filter_by(id=user_id).first()
-        result = user.update_profile(dict(request.form))
-
-    else:
-        result = {}
-
-    # user = Users.query.filter_by(id=user_id).first()
-
-    return render_template(
-        "profile.html",
-        success=result.get("success"),
-        info=result.get("info"),
-        warning=result.get("warning"),
-        error=result.get("error"),
-    )
-
-
-@app.route("/populate")
-@login_required
-def admin_populate():
-    user = Users.query.filter_by(id=current_user.id).first()
-    if user.is_admin:
-        populate()
-        return render_template("admin.html", success="Populate OK")
-
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-
-        # All users
-        all_users = Users.query.order_by(Users.username).all()
-
-        # Check admin
-        if len(all_users):
-            is_admin = False
-        else:
-            is_admin = True
-
-        # Check username
-        username = request.form.get("username")
-        user_check = Users.query.filter_by(username=username).first()
-
-        # Create user
-        if user_check:
-            return render_template(
-                "sign_up.html",
-                error=f"User '{username}' already exists. Choose another username.",
-                username=username,
-            )
-        else:
-            user = Users(
-                username=request.form.get("username"),
-                # password=request.form.get("password"),
-                password=hashlib.sha256(
-                    request.form.get("password").encode("UTF-8")
-                ).hexdigest(),
-                is_admin=is_admin,
-                groups="",
-            )
-            db.session.add(user)
-            db.session.commit()
-        return render_template("login.html", success=f"User '{username}' registered!")
-
-    # TEST
-    password = "tata"
-    print(hashlib.sha256(password.encode("UTF-8")).hexdigest())
-
-    return render_template("sign_up.html")
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    warning = None
-    error = None
-    if request.method == "POST":
-        username = request.form.get("username")
-        # password = request.form.get("password")
-        password = hashlib.sha256(
-            request.form.get("password").encode("UTF-8")
-        ).hexdigest()
-        user = Users.query.filter_by(username=username).first()
-        if user and user.password == password:
-            login_user(user)
-            return redirect(url_for("home"))
-        else:
-            error = f"Error in '{username}' login or password"
-    print(f"warning={warning}")
-    return render_template("login.html", warning=warning, error=error)
-
-
-@app.route("/help", methods=["GET", "POST"])
-def help():
-    return render_template("help.html")
-
-
-@app.route("/admin", methods=["GET", "POST"])
-@login_required
-def admin():
-    if current_user.is_admin:
-        all_users = Users.query.order_by(Users.username).all()
-        return render_template("admin.html", users=all_users)
-    else:
-        return redirect(url_for("login"))
-
-
-@app.route("/logout")
-def logout():
-    logout_user()
-    return redirect(url_for("home"))
-
-
-@app.route("/")
-def home():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
-    repos = {
-        "Input": Runs.query.filter(Runs.input_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Repository": Runs.query.filter(Runs.repository_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Archives": Runs.query.filter(Runs.archives_path != None)
-        .with_entities(Runs.name)
-        .all(),
-    }
-    all_runs_names = Runs.query.with_entities(Runs.name).all()
-
-    activity_statistics = activity_stats(all_runs)
-
-    modules = get_modules(folder=modules_dir)
-    limit = 12
-    return render_template(
-        "main.html",
-        runs=all_runs[:limit],
-        all_runs_names=all_runs_names,
-        runs_number=len(all_runs),
-        limit=limit,
-        modules=modules,
-        repos=repos,
-        activity_statistics=activity_statistics,
-        runs_mode="table",
-    )
-
-
-@app.route("/runs")
-@login_required
-def runs():
-    if current_user.is_authenticated:
-        return render_template("runs.html", title="")
-    else:
-        return redirect(url_for("login"))
-
-
-@app.route("/runs_<source>")
-@login_required
-def runs_source(source):
-    if current_user.is_authenticated:
-        fields = [
-            "name",
-            "mtime",
-            "last_modified",
-            "project",
-            "group",
-            "status_sequencing",
-            "status_analysis",
-            "status_repository",
-            "status_archives",
-        ]
-        class_fields = [getattr(Runs, f) for f in fields]
-        all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-        all_runs.reverse()
-        return render_template("runs.html", title=source, runs=all_runs)
-    else:
-        return redirect(url_for("login"))
-
-
-@app.route("/modules")
-@login_required
-def modules():
-    if current_user.is_authenticated:
-        modules = get_modules(folder=modules_dir)
-        return render_template("modules.html", modules=modules)
-    else:
-        return redirect(url_for("login"))
-
-
-@app.route("/statistics")
-def statistics():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
-    repos = {
-        "Input": Runs.query.filter(Runs.input_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Repository": Runs.query.filter(Runs.repository_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Archives": Runs.query.filter(Runs.archives_path != None)
-        .with_entities(Runs.name)
-        .all(),
-    }
-
-    activity_statistics = activity_stats(all_runs)
-
-    return render_template(
-        "statistics.html",
-        repos=repos,
-        activity_statistics=activity_statistics,
-    )
-
-
-@app.route("/activity")
-@login_required
-def activity():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
-    limit = 1200
-    return render_template(
-        "activity.html",
-        runs=all_runs[:limit],
-        runs_number=len(all_runs),
-        limit=limit,
-        runs_mode="cards",
-    )
-
-
-@app.route("/about")
-def about():
-    return render_template("about.html")
-
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -1003,10 +1133,15 @@ if __name__ == "__main__":
         default=10,
         help="Set time for listener (every 10 seconds by default)",
     )
+    # parser.add_argument(
+    #     "-c",
+    #     "--config",
+    #     type=argparse.FileType("r", encoding="UTF-8"),
+    #     help="EDITH Config file",
+    # )
     parser.add_argument("-i", "--ihm", action="store_true", help="Run IHM server")
 
     args = parser.parse_args()
-    # print(args.populate, args.listener, args.ihm)
 
     if not args.populate and not args.listener and not args.ihm:
         parser.print_help()
@@ -1021,5 +1156,6 @@ if __name__ == "__main__":
             time.sleep(args.time_listener)
 
     if args.ihm:
+
         Bootstrap(app)
         app.run()
