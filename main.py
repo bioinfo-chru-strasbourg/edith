@@ -1,9 +1,11 @@
 import argparse
 import datetime
+import hashlib
 import os
 import re
 import sqlite3
 import time
+import zlib
 from flask import Flask, render_template, request, url_for, redirect, jsonify
 
 # from flask_cors import CORS
@@ -50,18 +52,41 @@ class Users(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(250), unique=True, nullable=False)
     password = db.Column(db.String(250), nullable=False)
+    email = db.Column(db.String(250), nullable=True)
+    theme = db.Column(db.String(50), nullable=True, default="default")
     is_admin = db.Column(db.Boolean(), nullable=True)
     groups = db.Column(db.String(250), nullable=True)
 
     def update_profile(self, infos_get: dict):
         if infos_get:
-            password = infos_get.get("password")
+            # infos_update = infos_get
+            # print(f"infos_update={infos_update}")
+            password = hashlib.sha256(
+                infos_get.get("password").encode("UTF-8")
+            ).hexdigest()
             if password == self.password:
                 infos_update = {}
+
+                # Group
                 self.groups = infos_get.get("groups")
-                new_password1 = infos_get.get("new_password1")
-                new_password2 = infos_get.get("new_password2")
-                if new_password1 and new_password2:
+
+                # Email
+                if infos_get.get("email", None):
+                    self.email = infos_get.get("email")
+                    infos_update["email"] = self.email
+
+                # New Password
+                new_password1 = hashlib.sha256(
+                    infos_get.get("new_password1").encode("UTF-8")
+                ).hexdigest()
+                new_password2 = hashlib.sha256(
+                    infos_get.get("new_password2").encode("UTF-8")
+                ).hexdigest()
+                if (
+                    new_password1
+                    and new_password2
+                    and infos_get.get("new_password1", None)
+                ):
                     if new_password1 == new_password2:
                         new_password = new_password1
                         infos_update["password"] = new_password
@@ -70,6 +95,8 @@ class Users(UserMixin, db.Model):
                         return {
                             "error": f"User '{self.username}' not updated (wrong new password)!"
                         }
+
+                # Update if needed
                 if infos_update:
                     db.session.query(Users).filter(Users.id == self.id).update(
                         infos_update
@@ -345,7 +372,7 @@ def populate():
                     os.path.join(input_path, "RTAComplete.txt"), "r"
                 ).read()
 
-        # ANALAYSIS update
+        # ANALYSIS update
         if (inserted and run_infos.get("analysis_mtime", None)) or (
             run_infos.get("analysis_mtime", None)
             and run_check.analysis_mtime
@@ -410,9 +437,9 @@ def populate():
                 and analysis_log
                 and os.path.isfile(analysis_log)
             ):
-                run_infos_extra["repository_analysislog"] = open(
-                    analysis_log, "r"
-                ).read()
+                run_infos_extra["repository_analysislog"] = zlib.compress(
+                    open(analysis_log, "r").read().encode()
+                )
 
             # Config
             config_log = find_most_recent_file(
@@ -474,7 +501,9 @@ def populate():
                 and analysis_log
                 and os.path.isfile(analysis_log)
             ):
-                run_infos_extra["archives_analysislog"] = open(analysis_log, "r").read()
+                run_infos_extra["archives_analysislog"] = zlib.compress(
+                    open(analysis_log, "r").read().encode()
+                )
 
             # Config
             config_log = find_most_recent_file(
@@ -569,9 +598,11 @@ def run_status_calculation(run) -> dict:
     # ANALYSIS
     if run.analysis_mtime > 0:
         status["status_analysis"] = "info"
+    if run.analysis_api_json is not None:
+        status["status_analysis"] = "info"
     # info : Exit status: died with exit code
     if run.analysis_api_info is not None:
-        # print(f"{run.name}")
+
         find_error = re.findall(
             r"Exit status. died with exit code", run.analysis_api_info
         )
@@ -579,12 +610,11 @@ def run_status_calculation(run) -> dict:
         if find_error:
             # print("found")
             status["status_analysis"] = "danger"
-    # if not status["status_analysis"]:
-    #     status["status_analysis"] = "secondary"
-    # print(status["status_analysis"])
+        else:
+            status["status_analysis"] = "success"
 
     # REPOSITORY
-    if status["status_analysis"] == "danger":
+    if status["status_analysis"] == "danger" and False:
         status["status_repository"] = status["status_analysis"]
     else:
         if run.repository_mtime > 0:
@@ -592,11 +622,21 @@ def run_status_calculation(run) -> dict:
         if run.repository_starkcomplete is not None:
             status["status_repository"] = "success"
         if run.repository_analysislog is not None:
-            find_error = re.findall(rf"\*\*\*", run.repository_analysislog)
+            # find_error = re.findall(rf"\*\*\*", run.repository_analysislog)
+            find_error = re.findall(
+                rf"\*\*\*", zlib.decompress(run.repository_analysislog).decode()
+            )
+            # zlib.decompress(a).decode()
             if find_error:
                 status["status_repository"] = "danger"
         if not status["status_repository"]:
             status["status_repository"] = "secondary"
+
+    # Adjust analysis status if repository ok
+    if not status.get("status_analysis", None) and status.get(
+        "status_repository", None
+    ):
+        status["status_analysis"] = status["status_repository"]
 
     # ARCHIVES
     if run.archives_mtime > 0:
@@ -604,7 +644,9 @@ def run_status_calculation(run) -> dict:
     if run.archives_starkcomplete is not None:
         status["status_archives"] = "success"
     if run.archives_analysislog is not None:
-        find_error = re.findall(rf"\*\*\*", run.archives_analysislog)
+        find_error = re.findall(
+            rf"\*\*\*", zlib.decompress(run.archives_analysislog).decode()
+        )
         if find_error:
             status["status_archives"] = "danger"
     if not status["status_archives"]:
@@ -661,11 +703,18 @@ def activity_stats(runs: dict) -> dict:
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
+
+    user_id = current_user.id
+
     if request.method == "POST":
-        user = Users.query.filter_by(id=current_user.id).first()
+        # user_id = request.form.get("id", user_id)
+        user = Users.query.filter_by(id=user_id).first()
         result = user.update_profile(dict(request.form))
+
     else:
         result = {}
+
+    # user = Users.query.filter_by(id=user_id).first()
 
     return render_template(
         "profile.html",
@@ -712,13 +761,20 @@ def register():
         else:
             user = Users(
                 username=request.form.get("username"),
-                password=request.form.get("password"),
+                # password=request.form.get("password"),
+                password=hashlib.sha256(
+                    request.form.get("password").encode("UTF-8")
+                ).hexdigest(),
                 is_admin=is_admin,
                 groups="",
             )
             db.session.add(user)
             db.session.commit()
         return render_template("login.html", success=f"User '{username}' registered!")
+
+    # TEST
+    password = "tata"
+    print(hashlib.sha256(password.encode("UTF-8")).hexdigest())
 
     return render_template("sign_up.html")
 
@@ -729,7 +785,10 @@ def login():
     error = None
     if request.method == "POST":
         username = request.form.get("username")
-        password = request.form.get("password")
+        # password = request.form.get("password")
+        password = hashlib.sha256(
+            request.form.get("password").encode("UTF-8")
+        ).hexdigest()
         user = Users.query.filter_by(username=username).first()
         if user and user.password == password:
             login_user(user)

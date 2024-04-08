@@ -33,9 +33,10 @@
                                     <label for="username">UserName:</label>
                                     <input type="text" class="form-control" name="username" value="{{current_user.username}}" disabled />
                                 </li>
-                                <!-- <li class="nav-item">
-                                    Password: {{current_user.password}}
-                                </li> -->
+                                <li class="nav-item"></li>
+                                    <label for="email">E-mail:</label>
+                                    <input type="text" class="form-control" name="email" value="{{ current_user.email if current_user.email is not none }}" />
+                                </li>
                                 <li class="nav-item">
                                     <label for="is_admin">Admin:</label>
                                     <input type="checkbox" name="is_admin" value="{{current_user.is_admin}}" disabled />

@@ -27,10 +27,12 @@
                         
                         <tr>
                             <th scope="col" class="lead"><small>Run</small></th>
+                            <th scope="col" class="lead"><small>Tags</small></th>
                             <th scope="col" class="lead"><small>Date</small></th>
-                            <th scope="col" class="lead"><small>Status</small></th>
-                            <th scope="col" class="lead"><small>Project</small></th>
-                            <th scope="col" class="lead"><small>Group</small></th>
+                            <th scope="col" class="lead" ><small>Status</small></th>
+                            
+                            <!-- <th scope="col" class="lead"><small>Project</small></th>
+                            <th scope="col" class="lead"><small>Group</small></th> -->
                         </tr>
                         </small>
                     </thead>
@@ -50,7 +52,6 @@
                                         <div class="progress-bar bg-{{run.status_repository}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="repoository {{status_map.get(run.status_repository)}}"></div>
                                         <div class="progress-bar bg-{{run.status_archives}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="archives {{status_map.get(run.status_archives)}}"></div>
                                     </div> -->
-                                    
                                     {% if run.input_path %}
                                         <span class="badge rounded-pill bg-light">Input</span>
                                     {% endif %}
@@ -61,6 +62,16 @@
                                         <span class="badge rounded-pill bg-light">Archives</span>
                                     {% endif %}
                                 </th>
+                                <td class="text-primary">
+                                    <small><small>
+                                        {% if run.project %}
+                                        <span class="badge rounded-pill bg-light" title="project">{{ run.project }}</span>
+                                        {% endif %}
+                                        {% if run.group %}
+                                        <span class="badge rounded-pill bg-light" title="group">{{ run.group }}</span>
+                                        {% endif %}
+                                    </small></small>
+                                </td>
                                 <td class="text-primary">
                                     <span class="lead text-body-tertiary"><small>{{ run.last_modified }}</small></span>
                                 </td>
@@ -73,6 +84,7 @@
 
                                     <div class="progress">
                                         <div class="progress-bar bg-{{run.status_sequencing}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="sequencing {{status_map.get(run.status_sequencing)}}"></div>
+                                        <div class="progress-bar bg-{{run.status_analysis}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="analysis {{status_map.get(run.status_analysis)}}"></div>
                                         <div class="progress-bar bg-{{run.status_repository}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="repoository {{status_map.get(run.status_repository)}}"></div>
                                         <div class="progress-bar bg-{{run.status_archives}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="archives {{status_map.get(run.status_archives)}}"></div>
                                     </div>
@@ -84,12 +96,13 @@
                                         <div class="progress-bar bg-{{run.status_archives}}" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" title="sequencing"></div>
                                     </div> -->
                                 </td>
-                                <td class="text-primary">
+                                
+                                <!-- <td class="text-primary">
                                     <span class="lead text-body-tertiary"><small>{{ run.project }}</small></span>
                                 </td>
                                 <td class="text-primary">
                                     <span class="lead text-body-tertiary"><small>{{ run.group }}</small></span>
-                                </td>
+                                </td> -->
                                 
                                 </tr>
                             {% endif %}
