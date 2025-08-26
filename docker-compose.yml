@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"
+    volumes:
+      - .:/app
+      - edith_data:/app/instance
+      # STARK directory mappings
+      - /Users/lebechea/STARK/input/runs:/STARK/input/runs
+      - /Users/lebechea/STARK/output/repository:/STARK/output/repository
+      - /Users/lebechea/STARK/output/archives:/STARK/output/archives
+      - /Users/lebechea/STARK/services:/STARK/services
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=your_secret_key
+      - CONFIG_FILE=/app/config/docker.config.json
+    restart: unless-stopped
+    # Command to run the interface
+    command: ["python", "main.py", "-i"]
+    # Add a healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edith
+
+volumes:
+  edith_data:
+    # Use named volume for persistent SQLite data
+
+networks:
+  edith:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
