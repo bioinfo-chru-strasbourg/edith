@@ -1,0 +1,22 @@
+{
+  "app": {
+    "SQLALCHEMY_DATABASE_URI": "sqlite:///edith.sqlite"
+  },
+  "folders_runs": {
+    "Input": "/STARK/input/runs",
+    "Repository": "/STARK/output/repository",
+    "Archives": "/STARK/output/archives"
+  },
+  "folders_services": {
+    "listener": "/STARK/services/stark/stark/listener",
+    "api": "/STARK/services/stark/stark/api"
+  },
+  "modules_dir": "/STARK/services",
+  "struct_filter": {
+    "DIAG": {},
+    "HUSDIAGGEN": {},
+    "HUSHEMATO": {},
+    "HUSTUMSOL": {},
+    "SOMATIC": {}
+  }
+}

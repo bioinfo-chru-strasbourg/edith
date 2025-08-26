@@ -37,7 +37,8 @@ from edith.modules import get_modules
 app = Flask(__name__)
 
 # Config
-config_file = os.path.join(app.root_path, "config", "config.json")
+config_file = os.environ.get("CONFIG_FILE", os.path.join(app.root_path, "config", "config.json"))
+print(f"Loading configuration from {config_file}")
 with open(config_file, "r") as config_file_pointer:
     config_json = yaml.safe_load(config_file_pointer)
 
@@ -1158,4 +1159,4 @@ if __name__ == "__main__":
     if args.ihm:
 
         Bootstrap(app)
-        app.run()
+        app.run(host='0.0.0.0')
