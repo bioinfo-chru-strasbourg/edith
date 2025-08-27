@@ -1,6 +1,8 @@
 {
   "app": {
-    "SQLALCHEMY_DATABASE_URI": "sqlite:///edith.sqlite"
+    "SQLALCHEMY_DATABASE_URI": "sqlite:///edith.sqlite",
+    "PARQUET_PATH": "instance",
+    "SECRET_KEY": "your_secret_key_here"
   },
   "folders_runs": {
     "Input": "/Users/lebechea/STARK/input/runs",

@@ -12,10 +12,43 @@
                 <div class="card border-secondary mb-3" style="width: 100%;">
                     <div class="card-header">Admin</div>
                     <div class="card-body">
-                        <a href="/populate">populate</a>
+                        <a href="/populate">Populate</a><br>
+                        <a href="/cache">Cache Management</a>
                     </div>
                     
                 </div>
+                
+                {% if cache_stats %}
+                <div class="card border-secondary mb-3" style="width: 100%;">
+                    <div class="card-header">Cache Statistics</div>
+                    <div class="card-body">
+                        <p>Cache entries: {{ cache_stats.cache_size }}</p>
+                        <p>Cache TTL: {{ cache_stats.cache_ttl }} seconds</p>
+                        <p>Tables tracked: {{ cache_stats.tables_tracked }}</p>
+                        <p>Memory usage: {{ (cache_stats.memory_usage / 1024 / 1024) | round(2) }} MB</p>
+                        
+                        <h5>Entries by table:</h5>
+                        <ul>
+                        {% for table, count in cache_stats.entries_by_table.items() %}
+                            <li>{{ table }}: {{ count }}</li>
+                        {% endfor %}
+                        </ul>
+                        
+                        <form action="/cache" method="post">
+                            <div class="form-group">
+                                <label for="table_name">Table to invalidate:</label>
+                                <select name="table_name" id="table_name" class="form-control">
+                                    <option value="">All tables</option>
+                                    {% for table in cache_stats.entries_by_table.keys() %}
+                                        <option value="{{ table }}">{{ table }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-danger mt-2">Invalidate Cache</button>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
                 {%- include "message.html" %}
 
             </div>
