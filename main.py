@@ -3,21 +3,19 @@ import datetime
 import hashlib
 import os
 import re
-import sqlite3
 import time
 import zlib
-from flask import Flask, render_template, request, url_for, redirect, jsonify
+import functools
+from flask import Flask, render_template, request, url_for, redirect, jsonify, current_app
 import pygal
 from pygal.style import CleanStyle
 import pandas as pd
+#from sqlalchemy.sql import func
+from edith.cache import app_cache, cached
 
 # from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
-from sqlalchemy.orm import load_only
 from flask_login import (
     LoginManager,
-    UserMixin,
     login_user,
     logout_user,
     current_user,
@@ -31,10 +29,50 @@ from edith.runs import (
     get_directories,
     get_files_log,
 )  # , get_runs  # , get_runs_folder
-from edith.modules import get_modules
+from edith.modules import get_modules_cached as get_modules
+from edith.parquet_store import ParquetStore
+from edith.parquet_models import ParquetModel, Users, Runs
 
 
 app = Flask(__name__)
+
+# Fonctions partagées pour gérer les statistiques des runs
+def refresh_runs_cache():
+    """
+    Force le rafraîchissement des caches relatifs aux runs
+    À appeler après toute modification des données
+    """
+    app_cache.invalidate("runs_statistics")
+    app_cache.invalidate("home_page_data")
+    app_cache.invalidate("statistics_page_data")
+    app_cache.invalidate("activity_stats:True")
+    app_cache.invalidate("run_status")
+    print("Run statistics cache refreshed")
+
+def get_runs_statistics():
+    """
+    Fonction centralisée pour récupérer les statistiques des runs
+    Cette fonction est mise en cache pour de meilleures performances
+    """
+    cache_key = "runs_statistics"
+    cached_stats = app_cache.get(cache_key)
+    if cached_stats:
+        return cached_stats
+        
+    # Faire une seule lecture pour obtenir toutes les informations nécessaires
+    stats = store.execute_query('runs', lambda df: {
+        'total_runs': len(df),
+        'input_names': df[df['input_path'].notnull()]['name'].tolist(),
+        'repository_names': df[df['repository_path'].notnull()]['name'].tolist(),
+        'archives_names': df[df['archives_path'].notnull()]['name'].tolist(),
+        'input_count': df['input_path'].notnull().sum(),
+        'repository_count': df['repository_path'].notnull().sum(),
+        'archives_count': df['archives_path'].notnull().sum()
+    })
+    
+    # Mettre en cache pour une minute
+    app_cache.set(cache_key, stats, ttl=60)
+    return stats
 
 # Config
 config_file = os.environ.get("CONFIG_FILE", os.path.join(app.root_path, "config", "config.json"))
@@ -46,10 +84,10 @@ with open(config_file, "r") as config_file_pointer:
 # All EDITH config
 app.config["EDITH"] = config_json
 
-# SQLAlchemy
-app.config["SQLALCHEMY_DATABASE_URI"] = config_json.get("app", {}).get(
-    "SQLALCHEMY_DATABASE_URI", "sqlite:///db.sqlite"
-)
+# Parquet storage
+parquet_path = config_json.get("app", {}).get("PARQUET_PATH", "instance")
+store = ParquetStore(parquet_path)
+ParquetModel.set_store(store)  # Set the store for all models
 
 # Secret key
 app.config["SECRET_KEY"] = config_json.get("app", {}).get("SECRET_KEY", "abcdef")
@@ -61,72 +99,15 @@ login_manager.init_app(app)
 # # enable CORS
 # CORS(app, resources={r"/*": {"origins": "*"}})
 
-db = SQLAlchemy()
 
+# Models are now imported from edith.parquet_models
+# The class definitions in that file replace these
 
-class Users(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(250), unique=True, nullable=False)
-    password = db.Column(db.String(250), nullable=False)
-    email = db.Column(db.String(250), nullable=True)
-    theme = db.Column(db.String(50), nullable=True, default="default")
-    is_admin = db.Column(db.Boolean(), nullable=True)
-    groups = db.Column(db.String(250), nullable=True)
-
-    def update_profile(self, infos_get: dict):
-        if infos_get:
-            # infos_update = infos_get
-            # print(f"infos_update={infos_update}")
-            password = hashlib.sha256(
-                infos_get.get("password").encode("UTF-8")
-            ).hexdigest()
-            if password == self.password:
-                infos_update = {}
-
-                # Group
-                self.groups = infos_get.get("groups")
-
-                # Email
-                if infos_get.get("email", None):
-                    self.email = infos_get.get("email")
-                    infos_update["email"] = self.email
-
-                # New Password
-                new_password1 = hashlib.sha256(
-                    infos_get.get("new_password1").encode("UTF-8")
-                ).hexdigest()
-                new_password2 = hashlib.sha256(
-                    infos_get.get("new_password2").encode("UTF-8")
-                ).hexdigest()
-                if (
-                    new_password1
-                    and new_password2
-                    and infos_get.get("new_password1", None)
-                ):
-                    if new_password1 == new_password2:
-                        new_password = new_password1
-                        infos_update["password"] = new_password
-                        self.password = password
-                    else:
-                        return {
-                            "error": f"User '{self.username}' not updated (wrong new password)!"
-                        }
-
-                # Update if needed
-                if infos_update:
-                    db.session.query(Users).filter(Users.id == self.id).update(
-                        infos_update
-                    )
-                    db.session.commit()
-                    return {"success": f"User '{self.username}' updated!"}
-                else:
-                    return {"info": f"User '{self.username}' not updated (no need)!"}
-            else:
-                return {
-                    "error": f"User '{self.username}' not updated (wrong password)!"
-                }
-        else:
-            return {"info": f"User '{self.username}' not updated (no need)!"}
+# Loader for Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    # Use Parquet get() method instead of SQLAlchemy query.get()
+    return Users.get(user_id)
 
 
 # class Groups(UserMixin, db.Model):
@@ -134,56 +115,39 @@ class Users(UserMixin, db.Model):
 #     groupname = db.Column(db.String(250), unique=True, nullable=False)
 
 
-class Runs(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(250), unique=True, nullable=False)
-    mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
-    last_modified = db.Column(db.String(100), unique=False, nullable=True)
-    input_path = db.Column(db.String(500), unique=False, nullable=True)
-    input_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
-    input_last_modified = db.Column(db.String(100), unique=False, nullable=True)
-    input_samplesheet = db.Column(db.Text, unique=False, nullable=True)
-    input_rtacomplete = db.Column(db.Text, unique=False, nullable=True)
-    repository_path = db.Column(db.String(500), unique=False, nullable=True)
-    repository_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
-    repository_last_modified = db.Column(db.String(100), unique=False, nullable=True)
-    repository_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
-    repository_analysislog = db.Column(db.Text, unique=False, nullable=True)
-    repository_config = db.Column(db.Text, unique=False, nullable=True)
-    archives_path = db.Column(db.String(500), unique=False, nullable=True)
-    archives_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
-    archives_last_modified = db.Column(db.String(100), unique=False, nullable=True)
-    archives_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
-    archives_analysislog = db.Column(db.Text, unique=False, nullable=True)
-    archives_config = db.Column(db.Text, unique=False, nullable=True)
-    analysis_path = db.Column(db.String(500), unique=False, nullable=True)
-    analysis_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
-    analysis_last_modified = db.Column(db.String(100), unique=False, nullable=True)
-    analysis_listener_log = db.Column(db.Text, unique=False, nullable=True)
-    analysis_listener_json = db.Column(db.Text, unique=False, nullable=True)
-    analysis_listener_info = db.Column(db.Text, unique=False, nullable=True)
-    analysis_listener_output = db.Column(db.Text, unique=False, nullable=True)
-    analysis_listener_err = db.Column(db.Text, unique=False, nullable=True)
-    analysis_api_log = db.Column(db.Text, unique=False, nullable=True)
-    analysis_api_json = db.Column(db.Text, unique=False, nullable=True)
-    analysis_api_info = db.Column(db.Text, unique=False, nullable=True)
-    analysis_api_output = db.Column(db.Text, unique=False, nullable=True)
-    analysis_api_err = db.Column(db.Text, unique=False, nullable=True)
-    group = db.Column(db.String(50), unique=False, nullable=True)
-    project = db.Column(db.String(50), unique=False, nullable=True)
-    status_sequencing = db.Column(db.String(50), unique=False, nullable=True)
-    status_analysis = db.Column(db.String(50), unique=False, nullable=True)
-    status_repository = db.Column(db.String(50), unique=False, nullable=True)
-    status_archives = db.Column(db.String(50), unique=False, nullable=True)
-    samples = db.Column(db.Integer(), unique=False, nullable=True, default=0)
-
-
-db.init_app(app)
-
-with app.app_context():
-    db.create_all()
-
-app.app_context().push()
+# Runs class is now imported from edith.parquet_models
+# Comment out all the following SQLAlchemy definitions as they are now in parquet_models.py
+#    input_path = db.Column(db.String(500), unique=False, nullable=True)
+#    input_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+#    input_last_modified = db.Column(db.String(100), unique=False, nullable=True)
+#    input_samplesheet = db.Column(db.Text, unique=False, nullable=True)
+#    input_rtacomplete = db.Column(db.Text, unique=False, nullable=True)
+#    repository_path = db.Column(db.String(500), unique=False, nullable=True)
+#    repository_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+#    repository_last_modified = db.Column(db.String(100), unique=False, nullable=True)
+#    repository_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
+#    repository_analysislog = db.Column(db.Text, unique=False, nullable=True)
+#    repository_config = db.Column(db.Text, unique=False, nullable=True)
+#    archives_path = db.Column(db.String(500), unique=False, nullable=True)
+#    archives_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+#    archives_last_modified = db.Column(db.String(100), unique=False, nullable=True)
+#    archives_starkcomplete = db.Column(db.Text, unique=False, nullable=True)
+#    archives_analysislog = db.Column(db.Text, unique=False, nullable=True)
+#    archives_config = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_path = db.Column(db.String(500), unique=False, nullable=True)
+#    analysis_mtime = db.Column(db.Float, unique=False, nullable=True, default=0)
+#    analysis_last_modified = db.Column(db.String(100), unique=False, nullable=True)
+#    analysis_listener_log = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_listener_json = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_listener_info = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_listener_output = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_listener_err = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_api_log = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_api_json = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_api_info = db.Column(db.Text, unique=False, nullable=True)
+#    analysis_api_output = db.Column(db.Text, unique=False, nullable=True)
+# The complete Runs model is now imported from edith.parquet_models
+# No need for db.init_app and db.create_all with ParquetStore
 
 ### RUNS
 
@@ -204,7 +168,15 @@ app.app_context().push()
 
 @login_manager.user_loader
 def loader_user(user_id):
-    return Users.query.get(user_id)
+    try:
+        # Handle both integer IDs and float IDs stored as strings
+        if '.' in user_id:
+            user_id = int(float(user_id))
+        else:
+            user_id = int(user_id)
+        return Users.get(user_id)
+    except (ValueError, TypeError):
+        return None
 
 
 # sanity check route
@@ -243,13 +215,23 @@ def pygalexample():
             style=custom_style, inner_radius=0.4, width=800, height=800
         )
         pie_chart.title = "Groups and Projects"
-        runs_by_group = (
-            Runs.query.with_entities(
-                Runs.group, Runs.project, func.count(Runs.id).label("total")
-            )
-            .group_by(Runs.group, Runs.project)
-            .all()
-        )
+        # Replace SQLAlchemy query with pandas operations using ParquetStore
+        # Get all runs from Parquet storage
+        all_runs = Runs.query().all()
+        
+        # Group by group and project and count
+        # Convert to pandas DataFrame
+        df = pd.DataFrame([(run.group, run.project) for run in all_runs], 
+                         columns=['group', 'project'])
+        
+        # Group and count
+        if len(df) > 0:
+            runs_by_group = df.groupby(['group', 'project']).size().reset_index(name='total')
+            # Convert to list of tuples (group, project, count)
+            runs_by_group = [(row['group'], row['project'], row['total']) 
+                            for _, row in runs_by_group.iterrows()]
+        else:
+            runs_by_group = []
         # print(runs_by_group)
         runs_by_group_dict = {}
         for group, project, total in runs_by_group:
@@ -341,7 +323,7 @@ def profile():
 
     if request.method == "POST":
         # user_id = request.form.get("id", user_id)
-        user = Users.query.filter_by(id=user_id).first()
+        user = Users.query().filter_by(id=user_id).first()
         result = user.update_profile(dict(request.form))
 
     else:
@@ -361,18 +343,37 @@ def profile():
 @app.route("/populate")
 @login_required
 def admin_populate():
-    user = Users.query.filter_by(id=current_user.id).first()
+    user = Users.query().filter_by(id=current_user.id).first()
     if user.is_admin:
         populate()
         return render_template("admin.html", success="Populate OK")
+        
+@app.route("/cache", methods=["GET", "POST"])
+@login_required
+def cache_management():
+    """Manage the Parquet data cache"""
+    user = Users.query().filter_by(id=current_user.id).first()
+    if not user.is_admin:
+        return redirect(url_for('index'))
+        
+    # Handle POST request to invalidate cache
+    if request.method == "POST":
+        table_name = request.form.get("table_name", None)
+        store.invalidate_cache(table_name)
+        message = f"Cache invalidated for {'all tables' if table_name is None else table_name}"
+        return render_template("admin.html", success=message, cache_stats=store.get_cache_stats())
+    
+    # GET request to show cache statistics
+    return render_template("admin.html", cache_stats=store.get_cache_stats())
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
 
-        # All users
-        all_users = Users.query.order_by(Users.username).all()
+        # All users - Get all and sort by username
+        all_users = Users.query().all()
+        all_users.sort(key=lambda user: user.username if hasattr(user, 'username') else "")
 
         # Check admin
         if len(all_users):
@@ -382,7 +383,7 @@ def register():
 
         # Check username
         username = request.form.get("username")
-        user_check = Users.query.filter_by(username=username).first()
+        user_check = Users.query().filter_by(username=username).first()
 
         # Create user
         if user_check:
@@ -392,17 +393,17 @@ def register():
                 username=username,
             )
         else:
-            user = Users(
-                username=request.form.get("username"),
-                # password=request.form.get("password"),
-                password=hashlib.sha256(
-                    request.form.get("password").encode("UTF-8")
-                ).hexdigest(),
-                is_admin=is_admin,
-                groups="",
-            )
-            db.session.add(user)
-            db.session.commit()
+            # Create user object and set attributes individually for Parquet
+            user = Users()
+            user.username = request.form.get("username")
+            user.password = hashlib.sha256(
+                request.form.get("password").encode("UTF-8")
+            ).hexdigest()
+            user.is_admin = is_admin
+            user.groups = ""
+            
+            # Use Parquet save instead of db.session.add/commit
+            user.save()
         return render_template("login.html", success=f"User '{username}' registered!")
 
     # TEST
@@ -422,7 +423,7 @@ def login():
         password = hashlib.sha256(
             request.form.get("password").encode("UTF-8")
         ).hexdigest()
-        user = Users.query.filter_by(username=username).first()
+        user = Users.query().filter_by(username=username).first()
         if user and user.password == password:
             login_user(user)
             return redirect(url_for("home"))
@@ -441,7 +442,9 @@ def help():
 @login_required
 def admin():
     if current_user.is_admin:
-        all_users = Users.query.order_by(Users.username).all()
+        # Get all users and sort by username
+        all_users = Users.query().all()
+        all_users.sort(key=lambda user: user.username if hasattr(user, 'username') else "")
         return render_template("admin.html", users=all_users)
     else:
         return redirect(url_for("login"))
@@ -453,45 +456,106 @@ def logout():
     return redirect(url_for("home"))
 
 
+@app.route("/api/refresh")
+def api_refresh():
+    """
+    Endpoint API pour rafraîchir tous les caches
+    """
+    refresh_runs_cache()
+    return jsonify({
+        "status": "success", 
+        "message": "All caches refreshed", 
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
 @app.route("/")
+@cached(ttl=10, key_prefix='home_data')
 def home():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
-    repos = {
-        "Input": Runs.query.filter(Runs.input_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Repository": Runs.query.filter(Runs.repository_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Archives": Runs.query.filter(Runs.archives_path != None)
-        .with_entities(Runs.name)
-        .all(),
-    }
-    all_runs_names = Runs.query.with_entities(Runs.name).all()
-
-    activity_statistics = activity_stats(all_runs)
-
-    modules = get_modules(folder=config_json.get("modules_dir", ""))
+    # Limit for display
     limit = 12
+    start_time = time.time()
+    
+    # Vérifier si nous avons des données en cache
+    cache_key = "home_page_data"
+    cached_data = app_cache.get(cache_key)
+    
+    if cached_data:
+        print(f"Using cached home page data (saved {time.time() - app_cache.timestamps.get(cache_key, 0):.3f} seconds ago)")
+        return render_template(
+            "main.html",
+            runs=cached_data['recent_runs'],
+            all_runs_names=cached_data['all_runs_names'],
+            runs_number=cached_data['total_runs'],
+            limit=limit,
+            modules=cached_data['modules'],
+            repos=cached_data['repos'],
+            activity_statistics=cached_data['activity_statistics'],
+            runs_mode="table",
+        )
+    
+    # Utiliser une combinaison de deux fonctions optimisées:
+    # 1. get_runs_statistics() pour les statistiques générales (partagé avec /statistics)
+    # 2. Une fonction spécifique pour obtenir les runs récents
+    
+    # Obtenir les statistiques générales
+    run_stats = get_runs_statistics()
+    
+    # Fonction pour récupérer uniquement les runs récents
+    def get_recent_runs(df, limit=limit):
+        """Récupère les runs les plus récents"""
+        # Créer une copie sécurisée pour le tri
+        df_with_mtime = df.copy()
+        df_with_mtime['mtime_safe'] = df_with_mtime['mtime'].fillna(0)
+        # Trier et limiter
+        return df_with_mtime.sort_values('mtime_safe', ascending=False).head(limit).to_dict('records')
+    
+    # Récupérer les runs récents
+    recent_runs_data = store.execute_query('runs', get_recent_runs)
+    
+    # Convertir les dictionnaires de runs récents en objets Runs
+    recent_runs = []
+    for run_data in recent_runs_data:
+        run = Runs()
+        for key, value in run_data.items():
+            setattr(run, key, value)
+        recent_runs.append(run)
+    
+    # Définir repos avec des listes de noms (même structure que dans /statistics)
+    repos = {
+        "Input": run_stats['input_names'],
+        "Repository": run_stats['repository_names'],
+        "Archives": run_stats['archives_names']
+    }
+    
+    # Limiter la liste de noms pour la recherche
+    all_runs_names = run_stats['input_names'][:1000]  # Limiter à 1000 noms pour performance
+    
+    # Get activity statistics directly from Parquet files
+    # Using the dataframe approach which is more efficient
+    activity_statistics = activity_stats(use_dataframe=True)
+
+    # Get modules (cette opération n'est pas liée à Parquet donc on la garde)
+    modules = get_modules(folder=config_json.get("modules_dir", ""))
+    
+    # Stocker les données finales en cache
+    app_cache.set(cache_key, {
+        'recent_runs': recent_runs,
+        'all_runs_names': all_runs_names,
+        'total_runs': run_stats['total_runs'],
+        'modules': modules,
+        'repos': repos,
+        'activity_statistics': activity_statistics
+    })
+    
+    # Log du temps d'exécution pour monitoring des performances
+    print(f"Home page data prepared in {time.time() - start_time:.3f} seconds")
+    
     return render_template(
         "main.html",
-        runs=all_runs[:limit],
+        runs=recent_runs,
         all_runs_names=all_runs_names,
-        runs_number=len(all_runs),
+        runs_number=run_stats['total_runs'],
         limit=limit,
         modules=modules,
         repos=repos,
@@ -513,21 +577,11 @@ def runs():
 @login_required
 def runs_source(source):
     if current_user.is_authenticated:
-        fields = [
-            "name",
-            "mtime",
-            "last_modified",
-            "project",
-            "group",
-            "status_sequencing",
-            "status_analysis",
-            "status_repository",
-            "status_archives",
-        ]
-        class_fields = [getattr(Runs, f) for f in fields]
-        all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-        all_runs.reverse()
-        return render_template("runs.html", title=source, runs=all_runs)
+        # Get runs from Parquet, sorted by mtime descending
+        # Limiting to 1000 runs for performance; adjust as needed
+        limit = 1000
+        sorted_runs = Runs.query().order_by('mtime', ascending=False).limit(limit).all()
+        return render_template("runs.html", title=source, runs=sorted_runs)
     else:
         return redirect(url_for("login"))
 
@@ -543,36 +597,45 @@ def modules():
 
 
 @app.route("/statistics")
+@cached(ttl=30, key_prefix='statistics_data')
 def statistics():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
+    # Vérifier si nous avons des données en cache
+    cache_key = "statistics_page_data"
+    cached_data = app_cache.get(cache_key)
+    
+    if cached_data:
+        print(f"Using cached statistics page data (saved {time.time() - app_cache.timestamps.get(cache_key, 0):.3f} seconds ago)")
+        return render_template(
+            "statistics.html",
+            repos=cached_data['repos'],
+            activity_statistics=cached_data['activity_statistics'],
+        )
+    
+    start_time = time.time()
+    
+    # Utiliser la fonction partagée pour récupérer les statistiques des runs
+    run_stats = get_runs_statistics()
+    
+    # Définir repos avec les listes de noms
     repos = {
-        "Input": Runs.query.filter(Runs.input_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Repository": Runs.query.filter(Runs.repository_path != None)
-        .with_entities(Runs.name)
-        .all(),
-        "Archives": Runs.query.filter(Runs.archives_path != None)
-        .with_entities(Runs.name)
-        .all(),
+        "Input": run_stats['input_names'],
+        "Repository": run_stats['repository_names'],
+        "Archives": run_stats['archives_names']
     }
+    
+    # Utiliser la méthode optimisée et mise en cache pour les statistiques
+    # Identique à celle utilisée dans la page d'accueil
+    activity_statistics = activity_stats(use_dataframe=True)
 
-    activity_statistics = activity_stats(all_runs)
-
+    # Stocker les données en cache
+    app_cache.set(cache_key, {
+        'repos': repos,
+        'activity_statistics': activity_statistics
+    })
+    
+    # Log du temps d'exécution
+    print(f"Statistics page data prepared in {time.time() - start_time:.3f} seconds")
+    
     return render_template(
         "statistics.html",
         repos=repos,
@@ -583,26 +646,19 @@ def statistics():
 @app.route("/activity")
 @login_required
 def activity():
-    fields = [
-        "name",
-        "mtime",
-        "last_modified",
-        "project",
-        "group",
-        "status_sequencing",
-        "status_analysis",
-        "status_repository",
-        "status_archives",
-    ]
-    class_fields = [getattr(Runs, f) for f in fields]
-    all_runs = Runs.query.with_entities(*class_fields).order_by(Runs.mtime).all()
-    all_runs.reverse()
-
-    limit = 1200
+    # Pour l'activité, nous avons besoin de plus de runs, mais pas nécessairement tous
+    limit = 1200  # Ajustez selon vos besoins et la taille typique de votre base
+    
+    # Récupérer seulement le nombre de runs dont nous avons besoin, triés par mtime
+    sorted_runs = Runs.query().order_by('mtime', ascending=False).limit(limit).all()
+    
+    # Obtenir le nombre total de runs sans les charger tous
+    total_runs = Runs.query().count()
+    
     return render_template(
-        "activity.html",
-        runs=all_runs[:limit],
-        runs_number=len(all_runs),
+        "activity_parquet.html",
+        runs=sorted_runs,
+        runs_number=total_runs,
         limit=limit,
         runs_mode="cards",
     )
@@ -712,33 +768,40 @@ def populate():
         for run_name in runs_source:
             if run_name not in runs_infos:
                 runs_infos[run_name] = {}
-            # print(f"run_name={run_name}")
+            
+            # Assurons-nous que les chemins et les mtime sont correctement définis
+            if source in ["input", "repository", "archives"]:
+                if "path" in runs_source.get(run_name):
+                    runs_infos[run_name][f"{source}_path"] = runs_source.get(run_name).get("path")
+                if "mtime" in runs_source.get(run_name):
+                    runs_infos[run_name][f"{source}_mtime"] = runs_source.get(run_name).get("mtime")
+                if "last_modified" in runs_source.get(run_name):
+                    runs_infos[run_name][f"{source}_last_modified"] = runs_source.get(run_name).get("last_modified")
+            
+            # Pour d'autres éléments, gardons l'ancienne logique
             for item in runs_source.get(run_name):
-                runs_infos[run_name][f"{source}_{item}"] = runs_source.get(
-                    run_name
-                ).get(item, None)
-            # runs_infos[run_name][f"{source}_path"] = runs_source.get(run_name).get(
-            #     "path", None
-            # )
-            # runs_infos[run_name][f"{source}_mtime"] = runs_source.get(run_name).get(
-            #     "mtime", None
-            # )
+                if item not in ["path", "mtime", "last_modified"] or source == "analysis":
+                    runs_infos[run_name][f"{source}_{item}"] = runs_source.get(
+                        run_name
+                    ).get(item, None)
 
     # print(f"runs_infos={runs_infos}")
     for run_name in runs_infos:
         # print(f"run_name={run_name}")
         run_infos = runs_infos.get(run_name)
         # print(f"Run infos {run_infos}")
-        run_check = Runs.query.filter_by(name=run_name).first()
+        run_check = Runs.query().filter_by(name=run_name).first()
         inserted = False
 
         if not run_check:
             # Insert run
             print(f"Run '{run_name}' insert...")
-            run = Runs(name=run_name)
-            db.session.add(run)
+            run = Runs()
+            run.name = run_name
+            # Use Parquet save instead of db.session.add
+            run.save()
             inserted = True
-            run_check = Runs.query.filter_by(name=run_name).first()
+            run_check = Runs.query().filter_by(name=run_name).first()
             # db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
             # db.session.commit()
 
@@ -934,7 +997,12 @@ def populate():
 
         if run_infos_extra:
             print(f"Run '{run_name}' update...")
-            db.session.query(Runs).filter(Runs.name == run_name).update(run_infos_extra)
+            # Use Parquet update instead of db.session.query...update
+            run = Runs.query().filter_by(name=run_name).first()
+            if run:
+                for key, value in run_infos_extra.items():
+                    setattr(run, key, value)
+                run.save()
         # else:
         #     print(f"Run '{run_name} no update needed")
 
@@ -956,18 +1024,26 @@ def populate():
                 run_infos["mtime"]
             ).strftime("%Y-%m-%d %H:%M:%S")
 
-            db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
-            db.session.commit()
+            # Use Parquet update instead of db.session.query...update and commit
+            run = Runs.query().filter_by(name=run_name).first()
+            if run:
+                for key, value in run_infos.items():
+                    setattr(run, key, value)
+                run.save()
 
             # print("")
-            run_check = Runs.query.filter_by(name=run_name).first()
+            run_check = Runs.query().filter_by(name=run_name).first()
             # print(f"run_check={run_check.name}")
             print(f"Run '{run_name}' status...")
             run_status = run_status_calculation(run=run_check)
             # print(f"run_check2={run_check.name}")
             # print(f"run_status={run_status}")
-            db.session.query(Runs).filter(Runs.name == run_name).update(run_status)
-            db.session.commit()
+            # Use Parquet update instead of db.session.query...update and commit
+            run = Runs.query().filter_by(name=run_name).first()
+            if run:
+                for key, value in run_status.items():
+                    setattr(run, key, value)
+                run.save()
 
     # else:
     #     # Insert run
@@ -976,11 +1052,24 @@ def populate():
     #     run = Runs(name=run_name)
     #     db.session.add(run)
     #     db.session.query(Runs).filter(Runs.name == run_name).update(run_infos)
+    
+    # Rafraîchir les caches après les modifications de la base de données
+    refresh_runs_cache()
     #     db.session.commit()
 
 
+@cached(ttl=30, key_prefix='run_status')
 def run_status_calculation(run) -> dict:
-
+    """
+    Calcule le statut d'un run à partir de ses attributs.
+    Cette fonction est mise en cache pour améliorer les performances.
+    
+    Args:
+        run: L'objet run à évaluer
+        
+    Returns:
+        Dict contenant les statuts de séquençage, analyse, repository et archives
+    """
     # primary
     # secondary
     # success
@@ -1012,8 +1101,7 @@ def run_status_calculation(run) -> dict:
     if run.analysis_api_json is not None:
         status["status_analysis"] = "info"
     # info : Exit status: died with exit code
-    if run.analysis_api_info is not None:
-
+    if hasattr(run, 'analysis_api_info') and run.analysis_api_info is not None:
         find_error = re.findall(
             r"Exit status. died with exit code", run.analysis_api_info
         )
@@ -1066,18 +1154,37 @@ def run_status_calculation(run) -> dict:
     return status
 
 
-def activity_stats(runs: dict) -> dict:
-    """ """
+from edith.cache import app_cache, cached
 
-    # status_map = {
-    #     "secondary": "unknown",
-    #     "info": "waiting",
-    #     "warning": "warning",
-    #     "success": "success",
-    #     "danger": "error",
-    # }
+@cached(ttl=30, key_prefix='activity_stats')
+def activity_stats(runs=None, use_dataframe=False) -> dict:
+    """
+    Calculate activity statistics either from a list of run objects or directly from Parquet data
+    This function is cached to improve performance.
+    
+    Args:
+        runs: Optional list of run objects. If None and use_dataframe is True, stats will be calculated directly from Parquet.
+        use_dataframe: If True, calculate stats directly from Parquet dataframe for better performance
+        
+    Returns:
+        Dictionary of activity statistics
+    """
+    # Check if we have this in cache
+    cache_key = f"activity_stats:{use_dataframe}"
+    cached_stats = app_cache.get(cache_key)
+    if cached_stats:
+        return cached_stats
+        
+    # Initialiser la structure des statistiques
     activity_statistics = {
         "Sequencing": {
+            "secondary": 0,
+            "info": 0,
+            "warning": 0,
+            "success": 0,
+            "danger": 0,
+        },
+        "Analysis": {
             "secondary": 0,
             "info": 0,
             "warning": 0,
@@ -1099,15 +1206,46 @@ def activity_stats(runs: dict) -> dict:
             "danger": 0,
         },
     }
-    for run in runs:
-        for step in activity_statistics:
-            # val = getattr(run, f"status_{step}")
-            # print(val)
-            status = getattr(run, f"status_{step.lower()}")
-            if not status:
-                status = "secondary"
-            activity_statistics[step][status] += 1
-
+    
+    if use_dataframe:
+        # Calcule les statistiques directement depuis les données Parquet
+        # Cette méthode est beaucoup plus efficace pour les grands ensembles de données
+        def count_status_values(df, column):
+            # Compter les valeurs non-nulles de chaque statut
+            counts = df[column].value_counts().to_dict()
+            # Si des valeurs nulles, les compter comme "secondary"
+            null_count = df[column].isna().sum()
+            if null_count > 0:
+                counts['secondary'] = counts.get('secondary', 0) + null_count
+            # S'assurer que toutes les clés existent
+            for key in ["secondary", "info", "warning", "success", "danger"]:
+                if key not in counts:
+                    counts[key] = 0
+            return counts
+        
+        # Exécuter directement des requêtes sur le fichier Parquet pour calculer les statistiques
+        df = pd.read_parquet(store._get_file_path('runs'))
+        
+        # Calculer les statistiques pour chaque étape
+        for step in activity_statistics.keys():
+            column = f"status_{step.lower()}"
+            if column in df.columns:
+                status_counts = count_status_values(df, column)
+                activity_statistics[step].update(status_counts)
+    else:
+        # Méthode traditionnelle avec objets runs
+        if runs:
+            for run in runs:
+                for step in activity_statistics:
+                    status_attr = f"status_{step.lower()}"
+                    if hasattr(run, status_attr):
+                        status = getattr(run, status_attr)
+                        if not status:
+                            status = "secondary"
+                        activity_statistics[step][status] += 1
+    
+    # Cache the result
+    app_cache.set(cache_key, activity_statistics)
     return activity_statistics
 
 
@@ -1159,4 +1297,4 @@ if __name__ == "__main__":
     if args.ihm:
 
         Bootstrap(app)
-        app.run(host='0.0.0.0')
+        app.run(host='0.0.0.0', port=5001)

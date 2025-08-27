@@ -15,5 +15,44 @@
             </span>
             </li>
         {% endfor %}
+        
+        <!-- Bouton de rafraîchissement du cache -->
+        <li class="list-group-item">
+            <button id="refresh-cache-btn" class="btn btn-outline-primary btn-sm w-100">
+                <i class="fas fa-sync-alt"></i> Refresh Statistics
+            </button>
+        </li>
     </ul>
 </div>
+
+<!-- Script pour le bouton de rafraîchissement -->
+<script>
+document.getElementById('refresh-cache-btn').addEventListener('click', function() {
+    // Changer le texte du bouton pendant le chargement
+    const button = this;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+    button.disabled = true;
+    
+    // Appeler l'API pour rafraîchir le cache
+    fetch('/api/refresh')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Rafraîchir la page après le succès
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                alert('Error refreshing cache: ' + data.message);
+                button.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Statistics';
+                button.disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error refreshing cache. See console for details.');
+            button.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Statistics';
+            button.disabled = false;
+        });
+});
+</script>

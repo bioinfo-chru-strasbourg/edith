@@ -1,0 +1,21 @@
+{%- extends "base.html" %}
+
+<body>
+    {% block content %}
+    <div class="container">
+
+        {% if current_user.is_authenticated %}
+
+            <!-- Main Runs -->
+            {% if runs_mode == "cards" %}
+            {% include 'main_runs_cards.html' %}
+            {% else %}
+            {% include 'main_runs_table_parquet.html' %}
+            {% endif %}  
+
+        {% endif %}
+
+    </div>
+
+    {% endblock %}
+</body>

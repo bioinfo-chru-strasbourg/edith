@@ -1,3 +1,4 @@
+# Configuration JSON file for EDITH
 {
   "app": {
     "SQLALCHEMY_DATABASE_URI": "sqlite:///edith.sqlite",
